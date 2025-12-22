@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<!-- 
+    [TAG: DOCUMENT_HEAD]
+    سیستم انبار نکسوس
+    نسخه نهایی: اتصال به فایل‌های جداگانه (Modular)
+-->
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سیستم انبار نکسوس</title>
+    
+    <!-- کتابخانه‌های خارجی -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" />
+    
+    <!-- تنظیمات Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        nexus: { bg: '#0f172a', card: '#1e293b', input: '#020617', border: '#334155', primary: '#6366f1', accent: '#0ea5e9', success: '#10b981', danger: '#ef4444', warning: '#f59e0b' }
+                    },
+                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
+                    animation: { 'in': 'fadeIn 0.2s ease-out', 'out': 'fadeOut 0.2s ease-in', 'scale-in': 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)' },
+                    keyframes: { fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } }, scaleIn: { '0%': { transform: 'scale(0.95)', opacity: '0' }, '100%': { transform: 'scale(1)', opacity: '1' } } }
+                }
+            }
+        }
+    </script>
+    
+    <!-- استایل‌های عمومی -->
+    <style>
+        body { background: linear-gradient(135deg, #020617 0%, #0f172a 50%, #1e1b4b 100%); color: #e2e8f0; min-height: 100vh; overflow-y: auto; }
+        #root { min-height: 100vh; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+        .nexus-input { background-color: rgba(2, 6, 23, 0.5); border: 1px solid #334155; color: #f8fafc; border-radius: 0.5rem; transition: all 0.2s; }
+        .nexus-input:focus { border-color: #6366f1; background-color: rgba(2, 6, 23, 0.8); outline: none; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+        .nexus-input:disabled { opacity: 0.5; cursor: not-allowed; }
+        .glass-panel { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1); }
+        .ping-slow { animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+        @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <!-- 
+        [TAG: LOAD_SCRIPTS]
+        نکته بسیار مهم: 
+        اینجا دیگر کد جاوااسکریپتی وجود ندارد. ما فقط فایل‌هایی که ساخته‌اید را صدا می‌زنیم.
+        نام‌ها با %20 (فاصله) و %26 (&) آدرس‌دهی شده‌اند تا مرورگر بتواند آن‌ها را بخواند.
+    -->
+    
+    <!-- 1. هسته و ابزارها -->
+    <script type="text/babel" src="/static/js/Core%20Logic%26Utils.js"></script>
+    
+    <!-- 2. کامپوننت‌های رابط کاربری -->
+    <script type="text/babel" src="/static/js/UI%20Components.js"></script>
+    
+    <!-- 3. صفحات برنامه -->
+    <script type="text/babel" src="/static/js/Dashboard%20Page.js"></script>
+    <script type="text/babel" src="/static/js/Entry%20Page.js"></script>
+    <script type="text/babel" src="/static/js/Withdraw%20Page.js"></script>
+    <script type="text/babel" src="/static/js/inventory.js"></script>
+    <script type="text/babel" src="/static/js/Admin%20Pages.js"></script>
+    <script type="text/babel" src="/static/js/Extra%20Pages.js"></script>
+
+    <!-- 4. برنامه اصلی (نقطه شروع) -->
+    <script type="text/babel" src="/static/js/Main%20Application.js"></script>
+</body>
+</html>
