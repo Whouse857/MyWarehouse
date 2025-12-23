@@ -19,7 +19,7 @@ const toPersianDigits = (str) => {
 const getPartCodeLog = (l, config) => {
     if (!l) return "---";
     const prefix = (config && config[l.type]?.prefix) || "PRT";
-    const numeric = String(l.resistor_id || 0).padStart(9, '0');
+    const numeric = String(l.part_id || 0).padStart(9, '0');
     return `${prefix}${numeric}`;
 };
 

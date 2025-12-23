@@ -220,7 +220,7 @@ def register_routes(app, server_state):
                     if old_val not in config: return jsonify({"error": "Category not found"}), 404
                     if new_val in config: return jsonify({"error": "Category exists"}), 400
                     config[new_val] = config.pop(old_val); config[new_val]['label'] = new_val 
-                    conn.execute("UPDATE resistors SET type = ? WHERE type = ?", (new_val, old_val))
+                    conn.execute("UPDATE parts SET type = ? WHERE type = ?", (new_val, old_val))
                 elif mode == 'item':
                     if category not in config: return jsonify({"error": "Category not found"}), 404
                     target_list = config[category].get(list_name)
@@ -229,8 +229,8 @@ def register_routes(app, server_state):
                     col_map = {'packages': 'package', 'techs': 'tech', 'locations': 'storage_location', 'paramOptions': 'watt'}
                     if list_name in col_map:
                         db_col = col_map[list_name]
-                        if category == 'General' and list_name == 'locations': conn.execute(f"UPDATE resistors SET {db_col} = ? WHERE {db_col} = ?", (new_val, old_val))
-                        else: conn.execute(f"UPDATE resistors SET {db_col} = ? WHERE {db_col} = ? AND type = ?", (new_val, old_val, category))
+                        if category == 'General' and list_name == 'locations': conn.execute(f"UPDATE parts SET {db_col} = ? WHERE {db_col} = ?", (new_val, old_val))
+                        else: conn.execute(f"UPDATE parts SET {db_col} = ? WHERE {db_col} = ? AND type = ?", (new_val, old_val, category))
                 conn.execute("UPDATE app_config SET value = ? WHERE key = 'component_config'", (json.dumps(config),))
                 conn.commit()
                 return jsonify({"success": True})
@@ -240,7 +240,7 @@ def register_routes(app, server_state):
     @app.route('/api/parts', methods=['GET'])
     def get_parts():
         with get_db_connection() as conn:
-            parts = conn.execute('SELECT * FROM resistors ORDER BY id DESC').fetchall()
+            parts = conn.execute('SELECT * FROM parts ORDER BY id DESC').fetchall()
             return jsonify([dict(p) for p in parts])
 
     @app.route('/api/save', methods=['POST'])
@@ -267,28 +267,27 @@ def register_routes(app, server_state):
             
             op = 'ENTRY (New)'; qty_change = payload['quantity']
             with get_db_connection() as conn:
-                dup_sql = "SELECT id, quantity FROM resistors WHERE val=? AND watt=? AND tolerance=? AND package=? AND type=? AND tech=? AND storage_location=?"
+                dup_sql = "SELECT id, quantity FROM parts WHERE val=? AND watt=? AND tolerance=? AND package=? AND type=? AND tech=? AND storage_location=?"
                 dup_params = (payload['val'], payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['tech'], payload['storage_location'])
                 if part_id:
                     existing = conn.execute(dup_sql + " AND id != ?", (*dup_params, part_id)).fetchone()
                     if existing: return jsonify({"error": "Duplicate part"}), 400
-                    old = conn.execute('SELECT quantity FROM resistors WHERE id = ?', (part_id,)).fetchone()
+                    old = conn.execute('SELECT quantity FROM parts WHERE id = ?', (part_id,)).fetchone()
                     old_q = old['quantity'] if old else 0
                     if payload['quantity'] > old_q: op = 'ENTRY (Refill)'
                     elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
                     else: op = 'UPDATE (Edit)'
                     qty_change = payload['quantity'] - old_q
-                    conn.execute("""UPDATE resistors SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=? WHERE id=?""", (*payload.values(), part_id))
-                    rid = part_id
+                    conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=? WHERE id=?""", (*payload.values(), part_id))
                     rid = part_id
                 else:
                     existing = conn.execute(dup_sql, dup_params).fetchone()
                     if existing:
                         rid = existing['id']; new_qty = existing['quantity'] + qty_change; op = 'ENTRY (Refill - Merge)'
-                        conn.execute("UPDATE resistors SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], rid))
+                        conn.execute("UPDATE parts SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], rid))
                     else:
-                        cur = conn.execute("INSERT INTO resistors (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
-                conn.execute("INSERT INTO purchase_log (resistor_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                        cur = conn.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
+                conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
                             (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num))
                 conn.commit()
             return jsonify({"success": True})
@@ -302,15 +301,15 @@ def register_routes(app, server_state):
             with get_db_connection() as conn:
                 for item in items:
                     part_id = item['id']; qty_to_remove = int(item['qty'])
-                    row = conn.execute("SELECT quantity, val FROM resistors WHERE id = ?", (part_id,)).fetchone()
+                    row = conn.execute("SELECT quantity, val FROM parts WHERE id = ?", (part_id,)).fetchone()
                     if not row: return jsonify({"error": f"Part ID {part_id} not found."}), 404
                     if row['quantity'] < qty_to_remove: return jsonify({"error": f"موجودی ناکافی برای قطعه {row['val']}. (موجودی: {row['quantity']})"}), 400
                 for item in items:
                     part_id = item['id']; qty_to_remove = int(item['qty'])
-                    row = conn.execute("SELECT * FROM resistors WHERE id = ?", (part_id,)).fetchone()
+                    row = conn.execute("SELECT * FROM parts WHERE id = ?", (part_id,)).fetchone()
                     new_qty = row['quantity'] - qty_to_remove
-                    conn.execute("UPDATE resistors SET quantity = ?, last_modified_by = ? WHERE id = ?", (new_qty, username, part_id))
-                    conn.execute("""INSERT INTO purchase_log (resistor_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+                    conn.execute("UPDATE parts SET quantity = ?, last_modified_by = ? WHERE id = ?", (new_qty, username, part_id))
+                    conn.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
                                 (part_id, row['val'], -qty_to_remove, row['toman_price'], row['vendor_name'], datetime.now().strftime("%Y-%m-%d"), project_name, 'EXIT (Project)', username, row['watt'], row['tolerance'], row['package'], row['type'], row['storage_location'], row['tech'], row['usd_rate']))
                 conn.commit()
             return jsonify({"success": True})
@@ -320,10 +319,10 @@ def register_routes(app, server_state):
     def delete_part(id: int):
         with get_db_connection() as conn:
             try:
-                part = conn.execute("SELECT * FROM resistors WHERE id=?", (id,)).fetchone()
-                if part: conn.execute("INSERT INTO purchase_log (resistor_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech) VALUES (?, ?, 0, 'DELETE', 'Deleted by user', ?, ?, ?, ?, ?, ?)", (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech']))
+                part = conn.execute("SELECT * FROM parts WHERE id=?", (id,)).fetchone()
+                if part: conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech) VALUES (?, ?, 0, 'DELETE', 'Deleted by user', ?, ?, ?, ?, ?, ?)", (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech']))
             except: pass
-            conn.execute('DELETE FROM resistors WHERE id = ?', (id,))
+            conn.execute('DELETE FROM parts WHERE id = ?', (id,))
             conn.commit()
             return jsonify({"success": True})
 
@@ -362,7 +361,7 @@ def register_routes(app, server_state):
             daily_usd_price = fetch_daily_usd_price()
             usd_date = USD_CACHE.get("date_str", "")
             with get_db_connection() as conn:
-                rows = conn.execute("SELECT id, val, quantity, toman_price, usd_rate, min_quantity, type, package, storage_location, watt, tolerance, tech, vendor_name, purchase_links FROM resistors").fetchall()
+                rows = conn.execute("SELECT id, val, quantity, toman_price, usd_rate, min_quantity, type, package, storage_location, watt, tolerance, tech, vendor_name, purchase_links FROM parts").fetchall()
                 total_items = len(rows); total_quantity = 0; total_value_toman_calculated = 0.0; total_value_usd_live = 0.0; shortages = []; categories = {}
                 for row in rows:
                     q = row['quantity'] or 0; p = row['toman_price'] or 0.0; u = row['usd_rate'] or 0.0; min_q = row['min_quantity'] or 0; cat = row['type'] or 'Uncategorized'
@@ -396,7 +395,7 @@ def register_routes(app, server_state):
                 
                 # واگردانی اثر تراکنش روی انبار (معکوس کردن مقدار قبلی)
                 # اگر ورود بوده (مثبت)، از انبار کم میشود. اگر خروج بوده (منفی)، به انبار اضافه میشود.
-                conn.execute("UPDATE resistors SET quantity = quantity - ? WHERE id = ?", (log['quantity_added'], log['resistor_id']))
+                conn.execute("UPDATE parts SET quantity = quantity - ? WHERE id = ?", (log['quantity_added'], log['part_id']))
                 
                 # حذف لاگ
                 conn.execute("DELETE FROM purchase_log WHERE log_id = ?", (log_id,))
@@ -419,7 +418,7 @@ def register_routes(app, server_state):
                 # اعمال تفاضل مقدار جدید و قدیم روی انبار
                 # مثلا اگر قبلا ۱۰ تا وارد شده و الان کردیم ۱۲ تا، باید ۲ تا به انبار اضافه شود
                 diff = new_qty - old_log['quantity_added']
-                conn.execute("UPDATE resistors SET quantity = quantity + ? WHERE id = ?", (diff, old_log['resistor_id']))
+                conn.execute("UPDATE parts SET quantity = quantity + ? WHERE id = ?", (diff, old_log['part_id']))
                 
                 # بروزرسانی لاگ
                 conn.execute("UPDATE purchase_log SET quantity_added = ?, reason = ? WHERE log_id = ?", (new_qty, new_reason, log_id))
