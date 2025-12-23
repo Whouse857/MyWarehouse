@@ -41,7 +41,7 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
 };
 
 const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
-    const [formData, setFormData] = useState({ id: null, val: "", unit: "", watt: "", tol: "", pkg: "", type: "Resistor", date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [] });
+    const [formData, setFormData] = useState({ id: null, val: "", unit: "", watt: "", tol: "", pkg: "", type: "Resistor", date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [] ,  invoice_number: "" });
     const [partsList, setPartsList] = useState([]);
     const [contacts, setContacts] = useState([]);
     const [filters, setFilters] = useState({ val: '', pkg: '', loc: '', type: '', code: '' });
@@ -201,7 +201,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         let fullVal = formData.val;
         if(formData.unit && formData.unit !== "-") fullVal += formData.unit;
 
-        const payload = { ...formData, val: fullVal, qty: Number(formData.qty) || 0, min_qty: Number(formData.min_qty) || 1, price: String(formData.price_toman).replace(/,/g, ''), usd_rate: String(formData.usd_rate).replace(/,/g, ''), username: user.username };
+        const payload = { ...formData, val: fullVal, qty: Number(formData.qty) || 0, min_qty: Number(formData.min_qty) || 1, price: String(formData.price_toman).replace(/,/g, ''), usd_rate: String(formData.usd_rate).replace(/,/g, ''), username: user.username , invoice_number: formData.invoice_number};
         try { 
             const { ok, data } = await fetchAPI('/save', { method: 'POST', body: payload });
             if (ok) { 
@@ -244,7 +244,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         } catch (e) { links = []; }
 
         setFormData({ 
-            ...p, val: v, unit: u, tol: p.tolerance, pkg: p.package, type: category, tech: p.tech || "", watt: p.watt, date: p.buy_date, qty: (p.quantity === null || p.quantity === undefined) ? "" : p.quantity, price_toman: formatNumberWithCommas(p.toman_price), usd_rate: formatNumberWithCommas(p.usd_rate || ""), min_qty: (p.min_quantity === null || p.min_quantity === undefined) ? "" : p.min_quantity, location: p.storage_location || "", purchase_links: links
+            ...p, val: v, unit: u, tol: p.tolerance, pkg: p.package, type: category, tech: p.tech || "", watt: p.watt, date: p.buy_date, qty: (p.quantity === null || p.quantity === undefined) ? "" : p.quantity, price_toman: formatNumberWithCommas(p.toman_price), usd_rate: formatNumberWithCommas(p.usd_rate || ""), min_qty: (p.min_quantity === null || p.min_quantity === undefined) ? "" : p.min_quantity, location: p.storage_location || "", purchase_links: links, invoice_number: p.invoice_number
         });
         setErrors({});
     };
@@ -367,6 +367,14 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                     <div className="flex gap-3">
                                         <NexusSelect label="آدرس نگهداری (Location) *" value={formData.location} onChange={e=>handleChange('location', e.target.value)} options={locationOptions} disabled={!serverStatus} error={errors.location} className="flex-1" />
                                         <NexusSelect label="نام فروشنده *" value={formData.vendor_name} onChange={e=>handleChange('vendor_name', e.target.value)} options={vendorOptions} disabled={!serverStatus} error={errors.vendor_name} className="flex-1" />
+                                    </div>
+                                    <div className="flex gap-3 items-end">
+                                        <div className="flex-1">
+                                            <PersianDatePicker label="تاریخ خرید/فاکتور" value={formData.date} onChange={date => handleChange('date', date)} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <NexusInput label="شماره فاکتور" value={formData.invoice_number} onChange={e=>handleChange('invoice_number', e.target.value)} disabled={!serverStatus} placeholder="مثلاً ۱۲۳۴۵" />
+                                        </div>
                                     </div>
                                     <NexusInput label="پروژه / دلیل خرید" value={formData.reason} onChange={e=>handleChange('reason', e.target.value)} disabled={!serverStatus} />
                                     

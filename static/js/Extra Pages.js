@@ -124,7 +124,7 @@ const PersianDatePicker = ({ label, value, onChange }) => {
     return (
         <div className="relative" ref={popupRef}>
             <span className="absolute -top-2 right-2 text-[9px] text-gray-400 bg-[#1e293b] px-1 z-10">{label}</span>
-            <div onClick={() => setIsOpen(!isOpen)} className="nexus-input w-full px-2 py-2 text-sm bg-black/20 border-white/10 cursor-pointer flex items-center justify-between hover:bg-white/5 transition">
+            <div onClick={() => setIsOpen(!isOpen)} className="nexus-input w-full h-[38px] px-3 py-2 text-sm bg-black/20 border-white/10 cursor-pointer flex items-center justify-between hover:bg-white/5 transition">
                 <span className={value ? "text-white" : "text-gray-500"}>{value ? toPersianDigits(value) : "انتخاب کنید..."}</span>
                 <i data-lucide="calendar" className="w-4 h-4 text-gray-400"></i>
             </div>

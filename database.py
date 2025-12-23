@@ -121,6 +121,9 @@ def init_db():
             add_column_safe(conn, "purchase_log", "storage_location", "TEXT")
             add_column_safe(conn, "purchase_log", "tech", "TEXT")
             add_column_safe(conn, "purchase_log", "usd_rate", "REAL")
+            add_column_safe(conn, "resistors", "invoice_number", "TEXT")
+            add_column_safe(conn, "resistors", "entry_date", "TEXT")
+            add_column_safe(conn, "purchase_log", "invoice_number", "TEXT")
 
             if not conn.execute("SELECT key FROM app_config WHERE key = 'component_config'").fetchone():
                 conn.execute("INSERT INTO app_config (key, value) VALUES (?, ?)", 

@@ -249,13 +249,22 @@ def register_routes(app, server_state):
             d = request.json
             part_id = d.get('id'); username = d.get('username', 'unknown')
             raw_price = str(d.get("price", "")).replace(',', ''); price = float(raw_price) if raw_price and raw_price.replace('.', '', 1).isdigit() else 0.0
-            raw_usd = str(d.get("usd_rate", "")).replace(',', ''); usd_rate = float(raw_usd) if raw_usd and raw_usd.replace('.', '', 1).isdigit() else 0.0
+            raw_usd = str(d.get("usd_rate", "")).replace(',', '')
+            usd_rate = float(raw_usd) if raw_usd and raw_usd.replace('.', '', 1).isdigit() else 0.0
+            
+            # --- بخش جدید: تاریخ اتوماتیک و شماره فاکتور ---
+            inv_num = d.get("invoice_number", "")
+            current_entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # ---------------------------------------------
+
             links = d.get("purchase_links", []); links_json = json.dumps(links[:5]) if isinstance(links, list) else "[]"
             payload = {
                 "val": d.get("val", ""), "watt": d.get("watt", ""), "tolerance": d.get("tol", ""), "package": d.get("pkg", ""), "type": d.get("type", ""), "buy_date": d.get("date", ""),
                 "quantity": int(d.get("qty") or 0), "toman_price": price, "reason": d.get("reason", ""), "min_quantity": int(d.get("min_qty") or 1), "vendor_name": d.get("vendor_name", ""),
-                "last_modified_by": username, "storage_location": d.get("location", ""), "tech": d.get("tech", ""), "usd_rate": usd_rate, "purchase_links": links_json
+                "last_modified_by": username, "storage_location": d.get("location", ""), "tech": d.get("tech", ""), "usd_rate": usd_rate, "purchase_links": links_json,
+                "invoice_number": inv_num, "entry_date": current_entry_date # اضافه شد
             }
+            
             op = 'ENTRY (New)'; qty_change = payload['quantity']
             with get_db_connection() as conn:
                 dup_sql = "SELECT id, quantity FROM resistors WHERE val=? AND watt=? AND tolerance=? AND package=? AND type=? AND tech=? AND storage_location=?"
@@ -269,17 +278,18 @@ def register_routes(app, server_state):
                     elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
                     else: op = 'UPDATE (Edit)'
                     qty_change = payload['quantity'] - old_q
-                    conn.execute("""UPDATE resistors SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=? WHERE id=?""", (*payload.values(), part_id))
+                    conn.execute("""UPDATE resistors SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=? WHERE id=?""", (*payload.values(), part_id))
+                    rid = part_id
                     rid = part_id
                 else:
                     existing = conn.execute(dup_sql, dup_params).fetchone()
                     if existing:
                         rid = existing['id']; new_qty = existing['quantity'] + qty_change; op = 'ENTRY (Refill - Merge)'
-                        conn.execute("UPDATE resistors SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], rid))
+                        conn.execute("UPDATE resistors SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], rid))
                     else:
-                        cur = conn.execute("INSERT INTO resistors (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
-                conn.execute("INSERT INTO purchase_log (resistor_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-                            (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate']))
+                        cur = conn.execute("INSERT INTO resistors (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
+                conn.execute("INSERT INTO purchase_log (resistor_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                            (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num))
                 conn.commit()
             return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
