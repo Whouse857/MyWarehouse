@@ -291,7 +291,7 @@ const App = () => {
             </nav>
 
             <div className="p-6 border-t border-white/5 bg-black/40">
-              <p className="text-[10px] text-gray-400 text-center font-bold tracking-widest uppercase">H&Y Warehouse v4.0</p>
+              <p className="text-[10px] text-gray-400 text-center font-bold tracking-widest uppercase">H&Y Warehouse v1.0</p>
             </div>
           </aside>
 

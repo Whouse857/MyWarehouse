@@ -58,34 +58,42 @@ return (
 };
 
 const ExitDialog = ({ isOpen, onClose, onConfirm, onBackupAndExit, title, message, loading }) => {
- if (!isOpen) return null;
- return (
- <ModalOverlay>
- <div className="glass-panel border border-nexus-primary/50 p-6 rounded-2xl max-w-sm w-full shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
- <div className="flex flex-col items-center text-center gap-4">
- <div className="w-16 h-16 rounded-full flex items-center justify-center bg-nexus-primary/10 text-nexus-primary">
- <i data-lucide="power" className="w-8 h-8"></i>
- </div>
- <h3 className="text-xl font-bold text-white">{title}</h3>
- <p className="text-gray-300 text-sm leading-relaxed">{message}</p>
- <div className="flex flex-col gap-2 w-full mt-4">
- <button 
-    onClick={onBackupAndExit} 
-    disabled={loading}
-    className="w-full py-3 rounded-xl bg-nexus-success hover:bg-emerald-600 text-white font-bold transition shadow-lg flex justify-center items-center gap-2 disabled:opacity-50"
- >
-    <i data-lucide="save" className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}></i>
-    {loading ? 'در حال ایجاد بک‌آپ...' : 'بک‌آپ گیری و خروج'}
- </button>
- <div className="flex gap-2">
- <button onClick={onClose} disabled={loading} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-bold transition border border-white/5 disabled:opacity-50">انصراف</button>
- <button onClick={onConfirm} disabled={loading} className="flex-1 py-2.5 rounded-xl bg-nexus-danger hover:bg-red-600 text-white font-bold transition shadow-lg disabled:opacity-50">فقط خروج</button>
- </div>
- </div>
- </div>
- </div>
- </ModalOverlay>
- );
+    if (!isOpen) return null;
+    return (
+        <ModalOverlay>
+            {/* استایل کانتینر: تغییر بوردر به قرمز ملایم برای هماهنگی با حالت هشدار */}
+            <div className="glass-panel border border-red-500/30 p-6 rounded-2xl max-w-sm w-full shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+                <div className="flex flex-col items-center text-center gap-4">
+                    
+                    {/* استایل آیکون: دایره‌ای قرمز با سایه داخلی (مشابه ConfirmDialog) */}
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center bg-red-500/10 text-red-500 mb-2 shadow-inner border border-red-500/20">
+                        <i data-lucide="power" className="w-8 h-8"></i>
+                    </div>
+                    
+                    <h3 className="text-xl font-bold text-white">{title}</h3>
+                    <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-line">{message}</p>
+                    
+                    <div className="flex flex-col gap-3 w-full mt-4">
+                        {/* دکمه اصلی: بک‌آپ و خروج (سبز) - تمام عرض */}
+                        <button 
+                            onClick={onBackupAndExit} 
+                            disabled={loading}
+                            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-lg flex justify-center items-center gap-2 disabled:opacity-50 border border-emerald-500/20"
+                        >
+                            <i data-lucide="save" className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}></i>
+                            {loading ? 'در حال ایجاد بک‌آپ...' : 'بک‌آپ گیری و خروج'}
+                        </button>
+                        
+                        {/* دکمه‌های فرعی: انصراف و فقط خروج - در یک ردیف */}
+                        <div className="flex gap-2">
+                            <button onClick={onClose} disabled={loading} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-bold transition border border-white/5 disabled:opacity-50">انصراف</button>
+                            <button onClick={onConfirm} disabled={loading} className="flex-1 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 border border-red-500/20 font-bold transition shadow-lg disabled:opacity-50">فقط خروج</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </ModalOverlay>
+    );
 };
 
 const InputModal = ({ isOpen, onClose, onConfirm, title, label, initialValue = "" }) => {
