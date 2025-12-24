@@ -28,13 +28,17 @@ const BackupPage = () => {
                 body: { username: currentUser } 
             });
             if (ok) {
-                notify.show('موفقیت', `بک‌آپ ${data.filename} ایجاد شد`, 'success');
+                // نمایش مسیر دقیق ذخیره شده به کاربر
+                notify.show('موفقیت', `بک‌آپ در مسیر ${data.full_path} ذخیره شد`, 'success');
                 loadBackups();
             } else {
-                notify.show('خطا', data.error, 'error');
+                notify.show('خطا', data.error || 'عملیات لغو شد', 'error');
             }
-        } catch (e) { notify.show('خطا', 'مشکل در ایجاد بک‌آپ', 'error'); }
-        finally { setLoading(false); }
+        } catch (e) { 
+            notify.show('خطا', 'مشکل در ارتباط با سرور', 'error'); 
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleRestore = async (filename) => {

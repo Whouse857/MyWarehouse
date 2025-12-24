@@ -43,21 +43,45 @@ def register_routes(app, server_state):
         return jsonify({"status": "exiting"}), 200
 
     # --- بخش بک‌آپ ---
+    # --- بخش بک‌آپ (نسخه جدید با انتخاب پوشه ویندوز) ---
     @app.route('/api/backup/create', methods=['POST'])
     def create_backup():
         try:
+            # ۱. باز کردن پنجره انتخاب پوشه ویندوز
+            from tkinter import filedialog, Tk
+            root = Tk()
+            root.withdraw() # مخفی کردن پنجره اصلی tkinter
+            root.attributes("-topmost", True) # آوردن پنجره به روی بقیه برنامه‌ها
+            
+            # ۲. دریافت مسیر از کاربر
+            dest_folder = filedialog.askdirectory(title="محل ذخیره فایل بک‌آپ را انتخاب کنید")
+            root.destroy()
+            
+            # اگر کاربر کنسل کرد
+            if not dest_folder:
+                return jsonify({"error": "عملیات توسط کاربر لغو شد"}), 400
+
             data = request.json or {}
             username = data.get('username', 'System')
             safe_username = "".join([c for c in username if c.isalnum() or c in ('-','_')])
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             filename = f"nexus_backup_{safe_username}_{timestamp}.db"
-            dest = os.path.join(BACKUP_FOLDER, filename)
+            
+            # ۳. تهیه بک‌آپ و کپی در مسیر انتخابی
             with get_db_connection() as conn: conn.execute("PRAGMA wal_checkpoint(FULL);")
             time.sleep(0.1)
-            shutil.copy2(DATABASE_FILE, dest)
-            return jsonify({"success": True, "filename": filename})
-        except Exception as e: return jsonify({"error": str(e)}), 500
-
+            
+            dest_path = os.path.join(dest_folder, filename)
+            shutil.copy2(DATABASE_FILE, dest_path)
+            
+            # ۴. یک کپی هم برای لیست شدن در خود برنامه در پوشه backups می‌گذاریم
+            internal_dest = os.path.join(BACKUP_FOLDER, filename)
+            shutil.copy2(DATABASE_FILE, internal_dest)
+            
+            return jsonify({"success": True, "filename": filename, "full_path": dest_path})
+        except Exception as e: 
+            return jsonify({"error": str(e)}), 500
+        
     @app.route('/api/backup/list', methods=['GET'])
     def list_backups():
         try:
