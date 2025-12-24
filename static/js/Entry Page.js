@@ -314,7 +314,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                 </header>
                 <div className="flex-1 p-6">
                     <div className="grid grid-cols-12 gap-6">
-                        <div className="col-span-12 lg:col-span-8 flex flex-col">
+                        <div className="col-span-12 lg:col-span-8 flex flex-col order-2 lg:order-1">
                             <div className="glass-panel rounded-2xl flex flex-col">
                                 <div className="p-3 border-b border-white/5 grid grid-cols-5 gap-3 bg-white/5">
                                     <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="کد 12 رقمی..." value={filters.code} onChange={e => setFilters({...filters, code: e.target.value})} />
@@ -355,7 +355,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                 </div>
                             </div>
                         </div>
-                        <div className="col-span-12 lg:col-span-4 h-full">
+                        <div className="col-span-12 lg:col-span-4 h-full order-1 lg:order-2">
                             <div className="glass-panel border-white/10 rounded-2xl p-5 h-full flex flex-col shadow-2xl relative">
                                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-nexus-primary to-purple-600"></div>
                                 <h2 className="text-lg font-bold text-white mb-6 flex items-center justify-between"><span>{formData.id ? 'ویرایش قطعه' : 'ثبت قطعه جدید'}</span>{formData.id && <button onClick={() => setFormData({id: null, val: "", unit: (currentConfig.units && currentConfig.units[0]) || "", watt: "", tol: "", pkg: "", type: "Resistor", date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: "", vendor_name: "", location: "", tech: "", purchase_links: []})} className="text-xs text-gray-400 hover:text-white bg-white/5 px-2 py-1 rounded transition">انصراف</button>}</h2>
