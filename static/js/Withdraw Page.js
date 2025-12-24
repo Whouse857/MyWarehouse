@@ -3,7 +3,12 @@
 // نسخه اصلاح شده: خروج خودکار پرینت پس از تایید، اعلان‌های خودکار نارنجی و بهبود تایپ دستی
 
 const getPartCodeLocal = (p, config) => {
-    if (!p || !p.id) return "---";
+    if (!p) return "---";
+    // اولویت با کد اختصاصی ذخیره شده در دیتابیس
+    if (p.part_code) return p.part_code;
+    
+    // حالت رزرو برای قطعات قدیمی
+    if (!p.id) return "---";
     const prefix = (config && config[p.type]?.prefix) || "PRT";
     const numeric = String(p.id).padStart(9, '0');
     return `${prefix}${numeric}`;

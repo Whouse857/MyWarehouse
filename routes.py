@@ -244,6 +244,7 @@ def register_routes(app, server_state):
             return jsonify([dict(p) for p in parts])
 
     @app.route('/api/save', methods=['POST'])
+    
     def save_part():
         try:
             d = request.json
@@ -256,19 +257,33 @@ def register_routes(app, server_state):
             inv_num = d.get("invoice_number", "")
             current_entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             # ---------------------------------------------
-
-            links = d.get("purchase_links", []); links_json = json.dumps(links[:5]) if isinstance(links, list) else "[]"
-            payload = {
-                "val": d.get("val", ""), "watt": d.get("watt", ""), "tolerance": d.get("tol", ""), "package": d.get("pkg", ""), "type": d.get("type", ""), "buy_date": d.get("date", ""),
-                "quantity": int(d.get("qty") or 0), "toman_price": price, "reason": d.get("reason", ""), "min_quantity": int(d.get("min_qty") or 1), "vendor_name": d.get("vendor_name", ""),
-                "last_modified_by": username, "storage_location": d.get("location", ""), "tech": d.get("tech", ""), "usd_rate": usd_rate, "purchase_links": links_json,
-                "invoice_number": inv_num, "entry_date": current_entry_date # اضافه شد
-            }
             
-            op = 'ENTRY (New)'; qty_change = payload['quantity']
             with get_db_connection() as conn:
+                # ۱. پیدا کردن پیشوند (مثلاً RES یا CAP) از تنظیمات مدیریت
+                row_cfg = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
+                config = json.loads(row_cfg['value']) if row_cfg else {}
+                prefix = config.get(d.get("type"), {}).get("prefix", "PRT")
+
+                # ۲. تولید کد اختصاصی در صورت جدید بودن قطعه
+                part_code = d.get("part_code", "")
+                if not part_id and not part_code:
+                    count_row = conn.execute("SELECT COUNT(*) as cnt FROM parts WHERE type = ?", (d.get("type"),)).fetchone()
+                    next_num = (count_row['cnt'] or 0) + 1
+                    part_code = f"{prefix}{str(next_num).zfill(9)}"
+
+                links = d.get("purchase_links", []); links_json = json.dumps(links[:5]) if isinstance(links, list) else "[]"
+                
+                payload = {
+                    "val": d.get("val", ""), "watt": d.get("watt", ""), "tolerance": d.get("tol", ""), "package": d.get("pkg", ""), "type": d.get("type", ""), "buy_date": d.get("date", ""),
+                    "quantity": int(d.get("qty") or 0), "toman_price": price, "reason": d.get("reason", ""), "min_quantity": int(d.get("min_qty") or 1), "vendor_name": d.get("vendor_name", ""),
+                    "last_modified_by": username, "storage_location": d.get("location", ""), "tech": d.get("tech", ""), "usd_rate": usd_rate, "purchase_links": links_json,
+                    "invoice_number": inv_num, "entry_date": current_entry_date , "part_code": part_code
+                }
+                
+                op = 'ENTRY (New)'; qty_change = payload['quantity']
                 dup_sql = "SELECT id, quantity FROM parts WHERE val=? AND watt=? AND tolerance=? AND package=? AND type=? AND tech=? AND storage_location=?"
                 dup_params = (payload['val'], payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['tech'], payload['storage_location'])
+                
                 if part_id:
                     existing = conn.execute(dup_sql + " AND id != ?", (*dup_params, part_id)).fetchone()
                     if existing: return jsonify({"error": "Duplicate part"}), 400
@@ -278,21 +293,29 @@ def register_routes(app, server_state):
                     elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
                     else: op = 'UPDATE (Edit)'
                     qty_change = payload['quantity'] - old_q
-                    conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=? WHERE id=?""", (*payload.values(), part_id))
+                    conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=? WHERE id=?""", (*payload.values(), part_id))
                     rid = part_id
                 else:
                     existing = conn.execute(dup_sql, dup_params).fetchone()
                     if existing:
-                        rid = existing['id']; new_qty = existing['quantity'] + qty_change; op = 'ENTRY (Refill - Merge)'
-                        conn.execute("UPDATE parts SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], rid))
+                        rid = existing['id']
+                        # --- بخش اصلاحی: حفظ کد انبار قبلی در زمان ادغام ---
+                        old_p = conn.execute("SELECT part_code FROM parts WHERE id = ?", (rid,)).fetchone()
+                        if old_p and old_p['part_code']:
+                            payload['part_code'] = old_p['part_code']
+                        # -----------------------------------------------
+                        
+                        new_qty = existing['quantity'] + qty_change; op = 'ENTRY (Refill - Merge)'
+                        conn.execute("UPDATE parts SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], payload['part_code'], rid))
                     else:
-                        cur = conn.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
-                conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-                            (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num))
+                        cur = conn.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date, part_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
+                
+                conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number, part_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                            (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code']))
                 conn.commit()
             return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
-
+        
     @app.route('/api/withdraw', methods=['POST'])
     def withdraw_parts():
         try:
@@ -309,8 +332,8 @@ def register_routes(app, server_state):
                     row = conn.execute("SELECT * FROM parts WHERE id = ?", (part_id,)).fetchone()
                     new_qty = row['quantity'] - qty_to_remove
                     conn.execute("UPDATE parts SET quantity = ?, last_modified_by = ? WHERE id = ?", (new_qty, username, part_id))
-                    conn.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
-                                (part_id, row['val'], -qty_to_remove, row['toman_price'], row['vendor_name'], datetime.now().strftime("%Y-%m-%d"), project_name, 'EXIT (Project)', username, row['watt'], row['tolerance'], row['package'], row['type'], row['storage_location'], row['tech'], row['usd_rate']))
+                    conn.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, part_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+                            (part_id, row['val'], -qty_to_remove, row['toman_price'], row['vendor_name'], datetime.now().strftime("%Y-%m-%d"), project_name, 'EXIT (Project)', username, row['watt'], row['tolerance'], row['package'], row['type'], row['storage_location'], row['tech'], row['usd_rate'], row['part_code']))
                 conn.commit()
             return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
@@ -320,7 +343,10 @@ def register_routes(app, server_state):
         with get_db_connection() as conn:
             try:
                 part = conn.execute("SELECT * FROM parts WHERE id=?", (id,)).fetchone()
-                if part: conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech) VALUES (?, ?, 0, 'DELETE', 'Deleted by user', ?, ?, ?, ?, ?, ?)", (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech']))
+                if part: 
+                    conn.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech, part_code) 
+                                 VALUES (?, ?, 0, 'DELETE', 'Deleted by user', ?, ?, ?, ?, ?, ?, ?)""", 
+                                 (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech'], part['part_code']))
             except: pass
             conn.execute('DELETE FROM parts WHERE id = ?', (id,))
             conn.commit()
@@ -361,7 +387,8 @@ def register_routes(app, server_state):
             daily_usd_price = fetch_daily_usd_price()
             usd_date = USD_CACHE.get("date_str", "")
             with get_db_connection() as conn:
-                rows = conn.execute("SELECT id, val, quantity, toman_price, usd_rate, min_quantity, type, package, storage_location, watt, tolerance, tech, vendor_name, purchase_links FROM parts").fetchall()
+                # اضافه شدن ستون‌های جدید به کوئری
+                rows = conn.execute("SELECT id, val, quantity, toman_price, usd_rate, min_quantity, type, package, storage_location, watt, tolerance, tech, vendor_name, purchase_links, invoice_number, part_code FROM parts").fetchall()
                 total_items = len(rows); total_quantity = 0; total_value_toman_calculated = 0.0; total_value_usd_live = 0.0; shortages = []; categories = {}
                 for row in rows:
                     q = row['quantity'] or 0; p = row['toman_price'] or 0.0; u = row['usd_rate'] or 0.0; min_q = row['min_quantity'] or 0; cat = row['type'] or 'Uncategorized'
@@ -369,17 +396,27 @@ def register_routes(app, server_state):
                     if u > 0 and daily_usd_price > 0: current_part_value_toman = (p / u) * q * daily_usd_price
                     else: current_part_value_toman = p * q
                     total_value_toman_calculated += current_part_value_toman
+                    
                     if q <= min_q:
                         links = []
                         try: 
                             if row['purchase_links']: links = json.loads(row['purchase_links'])
                         except: pass
-                        shortages.append({"id": row['id'], "val": row['val'], "pkg": row['package'], "qty": q, "min": min_q, "loc": row['storage_location'], "type": row['type'], "watt": row['watt'], "tolerance": row['tolerance'], "tech": row['tech'], "vendor": row['vendor_name'], "links": links})
+                        # ارسال کد انبار و فاکتور به لیست کسری‌ها
+                        shortages.append({
+                            "id": row['id'], "val": row['val'], "pkg": row['package'], "qty": q, "min": min_q, 
+                            "loc": row['storage_location'], "type": row['type'], "watt": row['watt'], 
+                            "tolerance": row['tolerance'], "tech": row['tech'], "vendor": row['vendor_name'], 
+                            "links": links, "invoice_number": row['invoice_number'], "part_code": row['part_code']
+                        })
+                        
                     if cat not in categories: categories[cat] = {"count": 0, "value": 0}
                     categories[cat]["count"] += q; categories[cat]["value"] += current_part_value_toman
+                
                 if daily_usd_price > 0: total_value_usd_live = total_value_toman_calculated / daily_usd_price
                 else: total_value_usd_live = 0
                 shortages.sort(key=lambda x: x['qty'])
+                
                 return jsonify({
                     "total_items": total_items, "total_quantity": total_quantity, "total_value_toman": int(total_value_toman_calculated),
                     "total_value_usd_live": round(total_value_usd_live, 2), "live_usd_price": daily_usd_price, "usd_date": usd_date, "shortages": shortages, "categories": categories

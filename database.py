@@ -68,6 +68,8 @@ def init_db():
             add_column_safe(conn, "parts", "invoice_number", "TEXT")
             add_column_safe(conn, "parts", "entry_date", "TEXT")
             add_column_safe(conn, "purchase_log", "invoice_number", "TEXT")
+            add_column_safe(conn, "parts", "part_code", "TEXT")
+            add_column_safe(conn, "purchase_log", "part_code", "TEXT")
 
             if not conn.execute("SELECT * FROM users WHERE username = 'admin'").fetchone():
                 admin_perms = json.dumps({"entry": True, "withdraw": True, "inventory": True, "users": True, "management": True, "backup": True, "contacts": True, "log": True})

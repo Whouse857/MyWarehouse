@@ -4,7 +4,13 @@
 
 // تابع کمکی برای تولید کد 12 رقمی بر اساس ID و تنظیمات
 const getPartCode = (p, globalConfig) => {
+    // اگر کد از قبل در دیتابیس ذخیره شده، همان را نشان بده
+    if (p && p.part_code) return p.part_code; 
+    
+    // اگر قطعه جدید است و هنوز ID ندارد
     if (!p || !p.id) return "---";
+    
+    // حالت رزرو برای قطعات قدیمی
     const prefix = (globalConfig && globalConfig[p.type]?.prefix) || "PRT";
     const numeric = String(p.id).padStart(9, '0');
     return `${prefix}${numeric}`;
@@ -12,7 +18,7 @@ const getPartCode = (p, globalConfig) => {
 
 const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     if (!isOpen) return null;
-    const fullCode = getPartCode({ id: data.id || 'NEW', type: data.type }, globalConfig);
+    const fullCode = getPartCode(data, globalConfig);
     
     return (
         <ModalOverlay>
@@ -244,7 +250,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         } catch (e) { links = []; }
 
         setFormData({ 
-            ...p, val: v, unit: u, tol: p.tolerance, pkg: p.package, type: category, tech: p.tech || "", watt: p.watt, date: p.buy_date, qty: (p.quantity === null || p.quantity === undefined) ? "" : p.quantity, price_toman: formatNumberWithCommas(p.toman_price), usd_rate: formatNumberWithCommas(p.usd_rate || ""), min_qty: (p.min_quantity === null || p.min_quantity === undefined) ? "" : p.min_quantity, location: p.storage_location || "", purchase_links: links, invoice_number: p.invoice_number
+            ...p, val: v, unit: u, tol: p.tolerance, pkg: p.package, type: category, tech: p.tech || "", watt: p.watt, date: p.buy_date, qty: (p.quantity === null || p.quantity === undefined) ? "" : p.quantity, price_toman: formatNumberWithCommas(p.toman_price), usd_rate: formatNumberWithCommas(p.usd_rate || ""), min_qty: (p.min_quantity === null || p.min_quantity === undefined) ? "" : p.min_quantity, location: p.storage_location || "", purchase_links: links, invoice_number: p.invoice_number, part_code: p.part_code
         });
         setErrors({});
     };

@@ -18,6 +18,10 @@ const toPersianDigits = (str) => {
 // تابع کمکی برای کد اختصاصی در لاگ
 const getPartCodeLog = (l, config) => {
     if (!l) return "---";
+    // اولویت با کد ذخیره شده در دیتابیس است
+    if (l.part_code) return l.part_code;
+
+    // حالت رزرو برای لاگ‌های قدیمی (تولید از روی ID)
     const prefix = (config && config[l.type]?.prefix) || "PRT";
     const numeric = String(l.part_id || 0).padStart(9, '0');
     return `${prefix}${numeric}`;
@@ -395,6 +399,11 @@ const LogPage = () => {
                                                     <span className={`text-sm font-bold ${colorClass.split(' ')[0]}`}>{titleText}</span>
                                                     <span className="text-[10px] text-nexus-accent font-mono font-bold bg-nexus-accent/10 px-2 py-0.5 rounded-full border border-nexus-accent/20 tracking-tighter">{pCode}</span>
                                                     <span className="text-[10px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full">{l.operation_type}</span>
+                                                    {l.invoice_number && (
+                                                        <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 mr-1">
+                                                            فاکتور: {l.invoice_number}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <h3 className="text-lg font-black text-white ltr font-mono text-right flex items-center gap-2">{l.val}<span className="text-xs font-normal text-gray-400 bg-white/5 px-2 py-1 rounded">{l.package || '-'}</span></h3>
                                             </div>

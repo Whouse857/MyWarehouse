@@ -15,8 +15,11 @@ const formatInteger = (num) => {
 // تابع تولید کد اختصاصی 12 کاراکتری
 const getPartCodeInv = (item, config) => {
     if (!item) return "---";
+    // اولویت با کد اختصاصی ذخیره شده در دیتابیس (بسیار مهم)
+    if (item.part_code) return item.part_code; 
+    
+    // حالت رزرو برای قطعات قدیمی که کد ندارند
     const prefix = (config && config[item.type]?.prefix) || "PRT";
-    // در اینجا item.id از خروجی جدید API routes.py خوانده می‌شود
     const numeric = String(item.id || 0).padStart(9, '0');
     return `${prefix}${numeric}`;
 };
