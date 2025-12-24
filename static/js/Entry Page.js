@@ -2,6 +2,24 @@
 // صفحه ورود قطعه (ثبت اطلاعات)
 // نسخه اصلاح شده: نمایش کد اختصاصی 12 کاراکتری در لیست و پیش‌نمایش
 
+// نگاشت تنظیمات ادمین به متغیرهای فرم
+// key: نام لیست در admin_management (تنظیمات)
+// stateKey: نام متغیر در formData (دیتابیس)
+const DYNAMIC_FIELDS_MAP = [
+    { key: 'units', stateKey: 'unit', label: 'واحد' },
+    { key: 'paramOptions', stateKey: 'watt', label: 'پارامتر فنی' }, // مثلا وات
+    { key: 'packages', stateKey: 'pkg', label: 'پکیج' },
+    { key: 'techs', stateKey: 'tech', label: 'تکنولوژی' },
+    // فیلدهای جدید
+    { key: 'list5', stateKey: 'list5', label: 'فیلد ۵' },
+    { key: 'list6', stateKey: 'list6', label: 'فیلد ۶' },
+    { key: 'list7', stateKey: 'list7', label: 'فیلد ۷' },
+    { key: 'list8', stateKey: 'list8', label: 'فیلد ۸' },
+    { key: 'list9', stateKey: 'list9', label: 'فیلد ۹' },
+    { key: 'list10', stateKey: 'list10', label: 'فیلد ۱۰' },
+];
+
+
 // تابع کمکی برای تولید کد 12 رقمی بر اساس ID و تنظیمات
 const getPartCode = (p, globalConfig) => {
     // اگر کد از قبل در دیتابیس ذخیره شده، همان را نشان بده
@@ -47,7 +65,14 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
 };
 
 const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
-    const [formData, setFormData] = useState({ id: null, val: "", unit: "", watt: "", tol: "", pkg: "", type: "Resistor", date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [] ,  invoice_number: "" });
+    const [formData, setFormData] = useState({ 
+    id: null, val: "", unit: "", watt: "", tol: "", pkg: "", type: "Resistor", 
+    date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", 
+    min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [], 
+    invoice_number: "",
+    // مقادیر اولیه فیلدهای جدید
+    list5: "", list6: "", list7: "", list8: "", list9: "", list10: ""
+    });
     const [partsList, setPartsList] = useState([]);
     const [contacts, setContacts] = useState([]);
     const [filters, setFilters] = useState({ val: '', pkg: '', loc: '', type: '', code: '' });
@@ -182,22 +207,36 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
     const handleSubmit = () => {
         const newErrors = {};
+        const typeConfig = globalConfig?.[formData.type] || {}; 
+
+        // 1. بررسی فیلدهای ثابت همیشگی
         if(!formData.val) newErrors.val = true;
-        if(!formData.unit) newErrors.unit = true;
-        if(!formData.pkg) newErrors.pkg = true;
         if(!formData.qty || Number(formData.qty) <= 0) newErrors.qty = true;
         if(!formData.location) newErrors.location = true;
-        if(!formData.min_qty || Number(formData.min_qty) <= 0) newErrors.min_qty = true;
+        if(!formData.price_toman) newErrors.price_toman = true;
+        // اگر وندور الزامی است:
         if(!formData.vendor_name) newErrors.vendor_name = true;
-        
-        const rawPrice = formData.price_toman ? Number(formData.price_toman.replace(/,/g, '')) : 0;
-        if (!formData.price_toman || rawPrice <= 0) newErrors.price_toman = true;
-        const rawUsd = formData.usd_rate ? Number(formData.usd_rate.replace(/,/g, '')) : 0;
-        if (!formData.usd_rate || rawUsd <= 0) newErrors.usd_rate = true;
+
+        // 2. بررسی هوشمند فیلدهای داینامیک
+        DYNAMIC_FIELDS_MAP.forEach(field => {
+            const fieldConfig = typeConfig.fields?.[field.key];
+            
+            // منطق پیش‌فرض (اگر ادمین هنوز تنظیم نکرده باشد، ۴ تای اصلی نمایش داده می‌شوند)
+            const isDefaultVisible = ['units','paramOptions','packages','techs'].includes(field.key);
+            const isVisible = fieldConfig ? fieldConfig.visible : isDefaultVisible;
+            
+            // منطق الزامی بودن
+            const isDefaultRequired = ['units','packages'].includes(field.key); // مثلا یونیت و پکیج ذاتا مهم‌اند
+            const isRequired = fieldConfig ? fieldConfig.required : isDefaultRequired;
+
+            if (isVisible && isRequired) {
+                if (!formData[field.stateKey]) newErrors[field.stateKey] = true;
+            }
+        });
 
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
-            notify.show('خطای اعتبارسنجی', 'لطفاً فیلدهای قرمز شده را بررسی و اصلاح کنید.\nموارد ستاره‌دار الزامی هستند.', 'error');
+            notify.show('خطای اعتبارسنجی', 'لطفاً فیلدهای ستاره‌دار (الزامی) را پر کنید.', 'error');
             return;
         }
         setShowSummary(true);
@@ -214,8 +253,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                 loadData(); 
                 const typeConfig = globalConfig?.[formData.type] || globalConfig?.["Resistor"] || {};
                 const defUnit = (typeConfig.units && typeConfig.units[0]) || "";
+                // در داخل بلوک if (ok) ...
                 setFormData({ 
-                    id: null, val: "", unit: defUnit, watt: "", tol: "", pkg: "", type: formData.type, date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: []
+                    id: null, val: "", unit: defUnit, watt: "", tol: "", pkg: "", type: formData.type, 
+                    date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", 
+                    min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [],
+                    list5: "", list6: "", list7: "", list8: "", list9: "", list10: "" // <--- این‌ها را اضافه کنید
                 });
                 notify.show('موفقیت', 'قطعه با موفقیت در انبار ذخیره شد.', 'success');
                 setShowSummary(false);
@@ -364,6 +407,33 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                     <div className="flex gap-3"><NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} /><div className="flex-1"><NexusSelect label="واحد *" options={currentConfig.units} value={formData.unit} onChange={e=>handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} /></div></div>
                                     <div className="flex gap-3"><NexusSelect label={currentConfig.paramLabel} options={currentConfig.paramOptions} value={formData.watt} onChange={e=>handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} /><NexusSelect label="تولرانس" options={rTols} value={formData.tol} onChange={e=>handleChange('tol', e.target.value)} className="flex-1" disabled={!serverStatus} /></div>
                                     <div className="flex gap-3"><NexusSelect label="پکیج (Package) *" options={currentConfig.packages} value={formData.pkg} onChange={e=>handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} /><div className="flex-1"><label className="text-gray-400 text-xs mb-1 block font-medium">تکنولوژی/نوع دقیق</label><div className="relative"><select value={formData.tech} onChange={e=>handleChange('tech', e.target.value)} disabled={!serverStatus} className="nexus-input w-full px-3 py-2 text-sm appearance-none cursor-pointer" dir="ltr"><option value="" className="bg-slate-900 text-gray-400">...</option>{(currentConfig.techs || []).map(opt => <option key={opt} value={opt} className="bg-slate-900">{opt}</option>)}</select><i data-lucide="chevron-down" className="absolute left-2 top-2.5 w-4 h-4 text-gray-500 pointer-events-none"></i></div></div></div>
+                                    {/* شروع بخش اضافه شده: نمایش فیلدهای ۵ تا ۱۰ */}
+                                    <div className="grid grid-cols-2 gap-3 mt-3">
+                                        {DYNAMIC_FIELDS_MAP.filter(f => f.key.startsWith('list')).map(field => {
+                                            const fConfig = currentConfig.fields?.[field.key];
+                                            if (fConfig?.visible === false) return null;
+                                            
+                                            // دریافت لیست آیتم‌ها
+                                            const options = currentConfig[field.key] || [];
+                                            
+                                            // محاسبه نام فیلد + ستاره الزامی
+                                            const isReq = fConfig?.required;
+                                            const label = (fConfig?.label || field.label) + (isReq ? " *" : "");
+                                            
+                                            return (
+                                                <NexusSelect 
+                                                    key={field.key}
+                                                    label={label} 
+                                                    value={formData[field.stateKey]} 
+                                                    options={options}
+                                                    onChange={e => handleChange(field.stateKey, e.target.value)} 
+                                                    disabled={!serverStatus} 
+                                                    error={errors[field.stateKey]}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                    {/* پایان بخش اضافه شده */}
                                     <div className="h-px bg-white/5 my-2"></div>
                                     <div className="flex gap-3"><NexusInput label="تعداد *" type="number" value={formData.qty} onChange={e=>handleChange('qty', e.target.value)} onKeyPress={preventNonNumeric} className="flex-1" disabled={!serverStatus} error={errors.qty} /><NexusInput label="حداقل *" type="number" value={formData.min_qty} onChange={e=>handleChange('min_qty', e.target.value)} onKeyPress={preventNonNumeric} className="flex-1" disabled={!serverStatus} error={errors.min_qty} /></div>
                                     <div className="flex gap-3">

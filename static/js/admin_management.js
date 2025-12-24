@@ -35,7 +35,31 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     const handleDragEnter = (e, position) => { dragOverItem.current = position; const copyListItems = [...sortedKeys]; const dragItemContent = copyListItems[dragItem.current]; copyListItems.splice(dragItem.current, 1); copyListItems.splice(dragOverItem.current, 0, dragItemContent); dragItem.current = position; setSortedKeys(copyListItems); };
     const handleDragEnd = (e) => { e.target.classList.remove('opacity-50'); dragItem.current = null; dragOverItem.current = null; const newConfig = { ...config }; sortedKeys.forEach((key, index) => { if (newConfig[key]) newConfig[key].priority = sortedKeys.length - index; }); setConfig(newConfig); };
 
-    const listLabels = { 'packages': { label: 'پکیج‌ها', icon: 'box' }, 'techs': { label: 'تکنولوژی‌ها', icon: 'cpu' }, 'units': { label: 'واحدها', icon: 'ruler' }, 'paramOptions': { label: 'مقادیر پارامتر', icon: 'sliders' }, 'locations': { label: 'آدرس‌های انبار', icon: 'map-pin' } };
+    const listLabels = { 
+    'packages': { label: 'پکیج‌ها', icon: 'box' }, 
+    'techs': { label: 'تکنولوژی‌ها', icon: 'cpu' }, 
+    'units': { label: 'واحدها', icon: 'ruler' }, 
+    'paramOptions': { label: 'مقادیر پارامتر', icon: 'sliders' }, 
+    'locations': { label: 'آدرس‌های انبار', icon: 'map-pin' },
+    // --- این‌ها را اضافه کنید ---
+    'list5': { label: 'فیلد ۵', icon: 'list' },
+    'list6': { label: 'فیلد ۶', icon: 'list' },
+    'list7': { label: 'فیلد ۷', icon: 'list' },
+    'list8': { label: 'فیلد ۸', icon: 'list' },
+    'list9': { label: 'فیلد ۹', icon: 'list' },
+    'list10': { label: 'فیلد ۱۰', icon: 'list' }
+    };
+
+    // --- این تابع را اضافه کنید ---
+    const handleFieldConfigChange = (listName, key, value) => {
+        const newConfig = { ...config };
+        // مطمئن می‌شویم که آبجکت fields وجود دارد
+        if (!newConfig[selectedType].fields) newConfig[selectedType].fields = {};
+        if (!newConfig[selectedType].fields[listName]) newConfig[selectedType].fields[listName] = {};
+        
+        newConfig[selectedType].fields[listName][key] = value;
+        setConfig(newConfig);
+    };
 
     const handleAddItem = (listName, value) => {
         if (!value || !value.trim()) return;
@@ -85,13 +109,22 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     };
 
     const handleAddCategorySubmit = async (newVal) => {
+        
         if (!newVal || config[newVal]) return setAddCategoryModal(false);
-        const newConfig = { ...config, [newVal]: { label: newVal, icon: 'box', units: [], packages: [], techs: [], paramOptions: [], paramLabel: 'Parameter', priority: 0, prefix: 'PRT' }};
+        const newConfig = { ...config, 
+            [newVal]: { 
+            label: newVal, icon: 'box', 
+            units: [], packages: [], techs: [], paramOptions: [], 
+            // --- این خط را اضافه کنید ---
+            list5: [], list6: [], list7: [], list8: [], list9: [], list10: [],
+            // ---------------------------
+            paramLabel: 'Parameter', priority: 0, prefix: 'PRT' 
+        }};
         try { const { ok } = await fetchAPI('/settings/config', { method: 'POST', body: newConfig }); if (ok) { setConfig(newConfig); onConfigUpdate(newConfig); setSortedKeys([...sortedKeys, newVal]); setSelectedType(newVal); notify.show('موفقیت', 'اضافه شد.', 'success'); } } catch(e){}
         setAddCategoryModal(false);
     };
     
-    const listKeys = selectedType && config[selectedType] ? Object.keys(config[selectedType]).filter(key => Array.isArray(config[selectedType][key]) && (selectedType === 'General' ? key === 'locations' : key !== 'locations')) : [];
+    const listKeys = selectedType ? Object.keys(listLabels).filter(key => (selectedType === 'General' ? key === 'locations' : key !== 'locations')) : [];
 
     // تابع کمکی برای تغییر پیشوند
     const handlePrefixChange = (val) => {
@@ -147,29 +180,68 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {listKeys.map(listName => { 
-                                    const meta = listLabels[listName] || { label: listName, icon: 'list' }; 
-                                    return (
-                                        <div key={listName} className="bg-slate-900/50 p-4 rounded-xl border border-white/5 hover:border-white/10 transition">
-                                            <h3 className="text-sm font-bold text-gray-300 mb-3 flex items-center gap-2"><i data-lucide={meta.icon} className="w-4 h-4 text-nexus-accent"></i> {meta.label}</h3>
-                                            <div className="flex gap-2 mb-3">
-                                                <input className="nexus-input flex-1 px-3 py-1.5 text-xs" placeholder="آیتم جدید..." value={newItems[listName] || ''} onChange={(e) => setNewItems({...newItems, [listName]: e.target.value})} />
-                                                <button onClick={() => handleAddItem(listName, newItems[listName])} className="bg-nexus-primary hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg"><i data-lucide="plus" className="w-4 h-4"></i></button>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1 custom-scroll">
-                                                {(config[selectedType][listName] || []).map(item => (
-                                                    <div key={item} className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-lg border border-white/5 group hover:bg-white/10 transition">
-                                                        <span className="text-xs text-gray-300 font-mono">{item}</span>
-                                                        <div className="flex gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                            <button onClick={() => setRenameModal({ open: true, type: 'item', oldVal: item, category: selectedType, listName })} className="text-blue-400 hover:text-blue-300"><i data-lucide="pencil" className="w-3 h-3"></i></button>
-                                                            <button onClick={() => handleDeleteItem(listName, item)} className="text-red-400 hover:text-red-300"><i data-lucide="trash-2" className="w-3 h-3"></i></button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                {(config[selectedType][listName] || []).length === 0 && <span className="text-[10px] text-gray-600 italic">لیست خالی است</span>}
-                                            </div>
-                                        </div>
-                                    ); 
-                                })}
+    const meta = listLabels[listName] || { label: listName, icon: 'list' }; 
+    // دریافت تنظیمات ذخیره شده برای این فیلد
+    const fieldSettings = config[selectedType].fields?.[listName] || {};
+    const displayLabel = fieldSettings.label || meta.label;
+    const isRequired = !!fieldSettings.required;
+    const isVisible = fieldSettings.visible !== false; // پیش‌فرض نمایش داده شود
+
+    return (
+        <div key={listName} className="bg-slate-900/50 p-4 rounded-xl border border-white/5 hover:border-white/10 transition group/card">
+            {/* هدر کارت: تنظیمات نام و الزامی بودن */}
+            <div className="flex flex-col gap-2 mb-4 border-b border-white/5 pb-3">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-1">
+                        <i data-lucide={meta.icon} className="w-4 h-4 text-nexus-accent"></i> 
+                        {/* ورودی تغییر نام فیلد */}
+                        <input 
+                            className="bg-transparent border-b border-transparent hover:border-white/20 focus:border-nexus-accent text-sm font-bold text-gray-300 focus:text-white outline-none w-full transition-colors placeholder-gray-600"
+                            value={displayLabel}
+                            placeholder={meta.label}
+                            onChange={(e) => handleFieldConfigChange(listName, 'label', e.target.value)}
+                            title="برای تغییر نام کلیک کنید"
+                        />
+                    </div>
+                </div>
+                {/* دکمه‌های کنترلی */}
+                <div className="flex gap-2">
+                    <button 
+                        onClick={() => handleFieldConfigChange(listName, 'required', !isRequired)}
+                        className={`flex-1 text-[10px] py-1 rounded border transition font-bold ${isRequired ? 'bg-red-500/20 text-red-300 border-red-500/50' : 'bg-white/5 text-gray-500 border-white/10 hover:bg-white/10'}`}
+                    >
+                        {isRequired ? '* الزامی' : 'اختیاری'}
+                    </button>
+                    <button 
+                        onClick={() => handleFieldConfigChange(listName, 'visible', !isVisible)}
+                        className={`flex-1 text-[10px] py-1 rounded border transition font-bold ${isVisible ? 'bg-blue-500/20 text-blue-300 border-blue-500/50' : 'bg-white/5 text-gray-500 border-white/10 hover:bg-white/10'}`}
+                    >
+                        {isVisible ? 'نمایش' : 'مخفی'}
+                    </button>
+                </div>
+            </div>
+
+            {/* قسمت افزودن آیتم به لیست (مثل قبل) */}
+            <div className="flex gap-2 mb-3">
+                <input className="nexus-input flex-1 px-3 py-1.5 text-xs" placeholder="آیتم پیش‌فرض..." value={newItems[listName] || ''} onChange={(e) => setNewItems({...newItems, [listName]: e.target.value})} />
+                <button onClick={() => handleAddItem(listName, newItems[listName])} className="bg-nexus-primary hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg"><i data-lucide="plus" className="w-4 h-4"></i></button>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1 custom-scroll">
+                {(config[selectedType][listName] || []).map(item => (
+                    <div key={item} className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-lg border border-white/5 group hover:bg-white/10 transition">
+                        <span className="text-xs text-gray-300 font-mono">{item}</span>
+                        <div className="flex gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => setRenameModal({ open: true, type: 'item', oldVal: item, category: selectedType, listName })} className="text-blue-400 hover:text-blue-300"><i data-lucide="pencil" className="w-3 h-3"></i></button>
+                            <button onClick={() => handleDeleteItem(listName, item)} className="text-red-400 hover:text-red-300"><i data-lucide="trash-2" className="w-3 h-3"></i></button>
+                        </div>
+                    </div>
+                ))}
+                {(config[selectedType][listName] || []).length === 0 && <span className="text-[10px] text-gray-600 italic">لیست خالی است</span>}
+            </div>
+        </div>
+    ); 
+})}
                             </div>
                         </>
                     ) : (

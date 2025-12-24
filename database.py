@@ -65,11 +65,15 @@ def init_db():
             conn.execute("CREATE INDEX IF NOT EXISTS idx_log_timestamp ON purchase_log (timestamp);")
 
             # افزودن ستون‌های Migration برای اطمینان
-            add_column_safe(conn, "parts", "invoice_number", "TEXT")
-            add_column_safe(conn, "parts", "entry_date", "TEXT")
-            add_column_safe(conn, "purchase_log", "invoice_number", "TEXT")
             add_column_safe(conn, "parts", "part_code", "TEXT")
             add_column_safe(conn, "purchase_log", "part_code", "TEXT")
+
+            # --- شروع تغییرات: افزودن ستون‌های فیلدهای اضافی ---
+            extra_fields = ['list5', 'list6', 'list7', 'list8', 'list9', 'list10']
+            for field in extra_fields:
+                add_column_safe(conn, "parts", field, "TEXT")
+                add_column_safe(conn, "purchase_log", field, "TEXT")
+            
 
             if not conn.execute("SELECT * FROM users WHERE username = 'admin'").fetchone():
                 admin_perms = json.dumps({"entry": True, "withdraw": True, "inventory": True, "users": True, "management": True, "backup": True, "contacts": True, "log": True})

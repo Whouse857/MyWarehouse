@@ -253,18 +253,14 @@ def register_routes(app, server_state):
             raw_usd = str(d.get("usd_rate", "")).replace(',', '')
             usd_rate = float(raw_usd) if raw_usd and raw_usd.replace('.', '', 1).isdigit() else 0.0
             
-            # --- بخش جدید: تاریخ اتوماتیک و شماره فاکتور ---
             inv_num = d.get("invoice_number", "")
             current_entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # ---------------------------------------------
             
             with get_db_connection() as conn:
-                # ۱. پیدا کردن پیشوند (مثلاً RES یا CAP) از تنظیمات مدیریت
                 row_cfg = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
                 config = json.loads(row_cfg['value']) if row_cfg else {}
                 prefix = config.get(d.get("type"), {}).get("prefix", "PRT")
 
-                # ۲. تولید کد اختصاصی در صورت جدید بودن قطعه
                 part_code = d.get("part_code", "")
                 if not part_id and not part_code:
                     count_row = conn.execute("SELECT COUNT(*) as cnt FROM parts WHERE type = ?", (d.get("type"),)).fetchone()
@@ -273,11 +269,15 @@ def register_routes(app, server_state):
 
                 links = d.get("purchase_links", []); links_json = json.dumps(links[:5]) if isinstance(links, list) else "[]"
                 
+                # --- تغییر: دریافت مقادیر فیلدهای جدید ---
                 payload = {
                     "val": d.get("val", ""), "watt": d.get("watt", ""), "tolerance": d.get("tol", ""), "package": d.get("pkg", ""), "type": d.get("type", ""), "buy_date": d.get("date", ""),
                     "quantity": int(d.get("qty") or 0), "toman_price": price, "reason": d.get("reason", ""), "min_quantity": int(d.get("min_qty") or 1), "vendor_name": d.get("vendor_name", ""),
                     "last_modified_by": username, "storage_location": d.get("location", ""), "tech": d.get("tech", ""), "usd_rate": usd_rate, "purchase_links": links_json,
-                    "invoice_number": inv_num, "entry_date": current_entry_date , "part_code": part_code
+                    "invoice_number": inv_num, "entry_date": current_entry_date , "part_code": part_code,
+                    # اضافه شدن فیلدها به دیکشنری
+                    "list5": d.get("list5", ""), "list6": d.get("list6", ""), "list7": d.get("list7", ""), 
+                    "list8": d.get("list8", ""), "list9": d.get("list9", ""), "list10": d.get("list10", "")
                 }
                 
                 op = 'ENTRY (New)'; qty_change = payload['quantity']
@@ -293,25 +293,29 @@ def register_routes(app, server_state):
                     elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
                     else: op = 'UPDATE (Edit)'
                     qty_change = payload['quantity'] - old_q
-                    conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=? WHERE id=?""", (*payload.values(), part_id))
+                    
+                    # --- آپدیت دستور SQL برای ذخیره فیلدهای جدید ---
+                    conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=?, list5=?, list6=?, list7=?, list8=?, list9=?, list10=? WHERE id=?""", (*payload.values(), part_id))
                     rid = part_id
                 else:
                     existing = conn.execute(dup_sql, dup_params).fetchone()
                     if existing:
                         rid = existing['id']
-                        # --- بخش اصلاحی: حفظ کد انبار قبلی در زمان ادغام ---
                         old_p = conn.execute("SELECT part_code FROM parts WHERE id = ?", (rid,)).fetchone()
                         if old_p and old_p['part_code']:
                             payload['part_code'] = old_p['part_code']
-                        # -----------------------------------------------
                         
                         new_qty = existing['quantity'] + qty_change; op = 'ENTRY (Refill - Merge)'
+                        # توجه: در حالت ادغام (Merge)، معمولاً مشخصات فنی تغییر نمی‌کند، پس لیست‌ها را آپدیت نمی‌کنیم یا اگر بخواهید می‌توانید اضافه کنید.
+                        # اینجا فقط موارد اصلی آپدیت می‌شوند.
                         conn.execute("UPDATE parts SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], payload['part_code'], rid))
                     else:
-                        cur = conn.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date, part_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
+                        # --- آپدیت دستور INSERT ---
+                        cur = conn.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date, part_code, list5, list6, list7, list8, list9, list10) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
                 
-                conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number, part_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-                            (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code']))
+                # --- آپدیت لاگ برای شامل شدن فیلدهای جدید ---
+                conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number, part_code, list5, list6, list7, list8, list9, list10) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                            (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code'], payload['list5'], payload['list6'], payload['list7'], payload['list8'], payload['list9'], payload['list10']))
                 conn.commit()
             return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
