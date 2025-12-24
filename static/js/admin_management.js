@@ -50,14 +50,28 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     'list10': { label: 'فیلد ۱۰', icon: 'list' }
     };
 
-    // --- این تابع را اضافه کنید ---
     const handleFieldConfigChange = (listName, key, value) => {
         const newConfig = { ...config };
-        // مطمئن می‌شویم که آبجکت fields وجود دارد
+        
+        // اطمینان از وجود ساختار ذخیره‌سازی
         if (!newConfig[selectedType].fields) newConfig[selectedType].fields = {};
         if (!newConfig[selectedType].fields[listName]) newConfig[selectedType].fields[listName] = {};
         
+        // اعمال تغییر مورد نظر کاربر
         newConfig[selectedType].fields[listName][key] = value;
+
+        // --- منطق هوشمند: ارتباط الزامی بودن و نمایش ---
+        
+        // ۱. اگر کاربر فیلد را "الزامی" کرد، باید حتماً "نمایش" داده شود
+        if (key === 'required' && value === true) {
+             newConfig[selectedType].fields[listName]['visible'] = true;
+        }
+        
+        // ۲. اگر کاربر فیلد را "مخفی" کرد، باید "الزامی" بودن آن برداشته شود
+        if (key === 'visible' && value === false) {
+             newConfig[selectedType].fields[listName]['required'] = false;
+        }
+
         setConfig(newConfig);
     };
 
