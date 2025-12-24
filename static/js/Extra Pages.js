@@ -344,7 +344,8 @@ const LogPage = () => {
             if (filters.startDate && logShamsi < filters.startDate) return false;
             if (filters.endDate && logShamsi > filters.endDate) return false;
             const terms = filters.general ? toEnglishDigits(filters.general.toLowerCase()).trim().split(/\s+/) : [];
-            const searchableText = toEnglishDigits(`${l.val || ''} ${l.username || ''} ${l.operation_type || ''} ${l.reason || ''} ${getPartCodeLog(l, config)}`.toLowerCase());
+            // این خط در تابع filteredLogs قرار دارد
+            const searchableText = toEnglishDigits(`${l.val || ''} ${l.username || ''} ${l.operation_type || ''} ${l.reason || ''} ${l.invoice_number || ''} ${getPartCodeLog(l, config)}`.toLowerCase());
             const generalMatch = terms.length === 0 || terms.every(term => searchableText.includes(term));
             const userMatch = !filters.user || (l.username && l.username.toLowerCase().includes(filters.user.toLowerCase()));
             const opMatch = !filters.operation || (l.operation_type && l.operation_type.toLowerCase().includes(filters.operation.toLowerCase()));
