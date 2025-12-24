@@ -51,6 +51,22 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     };
 
     const handleFieldConfigChange = (listName, key, value) => {
+        // --- شروع بخش جدید: بررسی وجود آیتم در لیست ---
+        // اگر کاربر می‌خواهد فیلد را "نمایش" دهد یا آن را "الزامی" کند
+        if ((key === 'visible' && value === true) || (key === 'required' && value === true)) {
+            const currentList = config[selectedType][listName] || [];
+            if (currentList.length === 0) {
+                // نمایش پیام خطا به کاربر و توقف عملیات
+                notify.show(
+                    'لیست خالی است', 
+                    `ابتدا باید حداقل یک آیتم برای این فیلد تعریف کنید تا بتوانید آن را فعال یا الزامی نمایید.`, 
+                    'error'
+                );
+                return; // اجازه تغییر وضعیت داده نمی‌شود
+            }
+        }
+        // --- پایان بخش جدید ---
+
         const newConfig = { ...config };
         
         // اطمینان از وجود ساختار ذخیره‌سازی
@@ -60,14 +76,11 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         // اعمال تغییر مورد نظر کاربر
         newConfig[selectedType].fields[listName][key] = value;
 
-        // --- منطق هوشمند: ارتباط الزامی بودن و نمایش ---
-        
-        // ۱. اگر کاربر فیلد را "الزامی" کرد، باید حتماً "نمایش" داده شود
+        // منطق هوشمند: ارتباط الزامی بودن و نمایش
         if (key === 'required' && value === true) {
              newConfig[selectedType].fields[listName]['visible'] = true;
         }
         
-        // ۲. اگر کاربر فیلد را "مخفی" کرد، باید "الزامی" بودن آن برداشته شود
         if (key === 'visible' && value === false) {
              newConfig[selectedType].fields[listName]['required'] = false;
         }

@@ -281,15 +281,37 @@ def register_routes(app, server_state):
             current_entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             with get_db_connection() as conn:
+                # --- اضافه کردن این بخش برای مدیریت قطعات حذف شده ---
+                if part_id:
+                    exists = conn.execute("SELECT id FROM parts WHERE id = ?", (part_id,)).fetchone()
+                    if not exists:
+                        part_id = None  # اگر قطعه حذف شده، آن را به عنوان قطعه جدید ثبت کن
+                # ---------------------------------------------------
                 row_cfg = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
                 config = json.loads(row_cfg['value']) if row_cfg else {}
                 prefix = config.get(d.get("type"), {}).get("prefix", "PRT")
 
+               # --- بخش اصلاح شده برای تولید کد انبار صعودی و یکتا ---
                 part_code = d.get("part_code", "")
                 if not part_id and not part_code:
-                    count_row = conn.execute("SELECT COUNT(*) as cnt FROM parts WHERE type = ?", (d.get("type"),)).fetchone()
-                    next_num = (count_row['cnt'] or 0) + 1
+                    # پیدا کردن آخرین کد ثبت شده برای این نوع قطعه
+                    last_row = conn.execute(
+                        "SELECT part_code FROM parts WHERE type = ? AND part_code LIKE ? ORDER BY part_code DESC LIMIT 1",
+                        (d.get("type"), f"{prefix}%")
+                    ).fetchone()
+                    
+                    if last_row and last_row['part_code']:
+                        try:
+                            # استخراج عدد از انتهای کد و اضافه کردن یک واحد به آن
+                            last_num_str = last_row['part_code'][len(prefix):]
+                            next_num = int(last_num_str) + 1
+                        except:
+                            next_num = 1
+                    else:
+                        next_num = 1
+                    
                     part_code = f"{prefix}{str(next_num).zfill(9)}"
+                # -------------------------------------------------------
 
                 links = d.get("purchase_links", []); links_json = json.dumps(links[:5]) if isinstance(links, list) else "[]"
                 

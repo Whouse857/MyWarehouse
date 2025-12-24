@@ -293,7 +293,26 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         } catch (e) { links = []; }
 
         setFormData({ 
-            ...p, val: v, unit: u, tol: p.tolerance, pkg: p.package, type: category, tech: p.tech || "", watt: p.watt, date: p.buy_date, qty: (p.quantity === null || p.quantity === undefined) ? "" : p.quantity, price_toman: formatNumberWithCommas(p.toman_price), usd_rate: formatNumberWithCommas(p.usd_rate || ""), min_qty: (p.min_quantity === null || p.min_quantity === undefined) ? "" : p.min_quantity, location: p.storage_location || "", purchase_links: links, invoice_number: p.invoice_number, part_code: p.part_code
+        ...p, 
+        val: v, 
+        unit: u, 
+        tol: p.tolerance, 
+        pkg: p.package, 
+        type: category, 
+        tech: p.tech || "", 
+        watt: p.watt, 
+        date: p.buy_date, 
+        qty: (p.quantity === null || p.quantity === undefined) ? "" : p.quantity, 
+        price_toman: formatNumberWithCommas(p.toman_price), 
+        usd_rate: formatNumberWithCommas(p.usd_rate || ""), 
+        min_qty: (p.min_quantity === null || p.min_quantity === undefined) ? "" : p.min_quantity, 
+        location: p.storage_location || "", 
+        purchase_links: links, 
+        invoice_number: p.invoice_number, 
+        part_code: p.part_code,
+        // --- این بخش زیر را حتماً اضافه کن ---
+        list5: p.list5 || "", list6: p.list6 || "", list7: p.list7 || "", 
+        list8: p.list8 || "", list9: p.list9 || "", list10: p.list10 || ""
         });
         setErrors({});
     };
@@ -304,6 +323,18 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     };
 
     const currentConfig = (globalConfig?.[formData.type]) ? globalConfig[formData.type] : (globalConfig?.["Resistor"]) || { units: [], paramOptions: [], packages: [], techs: [], icon: 'circle', label: 'Unknown', prefix: 'PRT' };
+
+    // --- تابع برای خواندن نام فیلدها از تنظیمات ادمین ---
+    const getLabel = (key, defaultLabel) => {
+        return currentConfig.fields?.[key]?.label || defaultLabel;
+    };
+
+    // --- تابع برای چک کردن اینکه فیلد باید نمایش داده شود یا نه ---
+    const isVisible = (key) => {
+        const fConfig = currentConfig.fields?.[key];
+        const isBase = ['units', 'paramOptions', 'packages', 'techs'].includes(key);
+        return fConfig ? fConfig.visible : isBase;
+    };
 
     return (
         <ErrorBoundary>
@@ -404,9 +435,9 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                         </div>
                                     </div>
                                     <div className="h-px bg-white/5 my-1"></div>
-                                    <div className="flex gap-3"><NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} /><div className="flex-1"><NexusSelect label="واحد *" options={currentConfig.units} value={formData.unit} onChange={e=>handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} /></div></div>
-                                    <div className="flex gap-3"><NexusSelect label={currentConfig.paramLabel} options={currentConfig.paramOptions} value={formData.watt} onChange={e=>handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} /><NexusSelect label="تولرانس" options={rTols} value={formData.tol} onChange={e=>handleChange('tol', e.target.value)} className="flex-1" disabled={!serverStatus} /></div>
-                                    <div className="flex gap-3"><NexusSelect label="پکیج (Package) *" options={currentConfig.packages} value={formData.pkg} onChange={e=>handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} /><div className="flex-1"><label className="text-gray-400 text-xs mb-1 block font-medium">تکنولوژی/نوع دقیق</label><div className="relative"><select value={formData.tech} onChange={e=>handleChange('tech', e.target.value)} disabled={!serverStatus} className="nexus-input w-full px-3 py-2 text-sm appearance-none cursor-pointer" dir="ltr"><option value="" className="bg-slate-900 text-gray-400">...</option>{(currentConfig.techs || []).map(opt => <option key={opt} value={opt} className="bg-slate-900">{opt}</option>)}</select><i data-lucide="chevron-down" className="absolute left-2 top-2.5 w-4 h-4 text-gray-500 pointer-events-none"></i></div></div></div>
+                                    <div className="flex gap-3"><NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} />{isVisible('units') && (<div className="flex-1"><NexusSelect label={getLabel('units', 'واحد') + ' *'} options={currentConfig.units} value={formData.unit} onChange={e=>handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} /></div> )}</div>
+                                    <div className="flex gap-3">{isVisible('paramOptions') && (<NexusSelect label={getLabel('paramOptions', currentConfig.paramLabel)} options={currentConfig.paramOptions} value={formData.watt} onChange={e=>handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.watt} />)}<NexusSelect label="تولرانس" options={rTols} value={formData.tol} onChange={e=>handleChange('tol', e.target.value)} className="flex-1" disabled={!serverStatus} /></div>
+                                    <div className="flex gap-3">{isVisible('packages') && (<NexusSelect label={getLabel('packages', 'پکیج (Package)') + ' *'} options={currentConfig.packages} value={formData.pkg} onChange={e=>handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} />)}{isVisible('techs') && (<div className="flex-1"><label className="text-gray-400 text-xs mb-1 block font-medium">{getLabel('techs', 'تکنولوژی/نوع دقیق')}</label><NexusSelect options={currentConfig.techs} value={formData.tech} onChange={e=>handleChange('tech', e.target.value)} disabled={!serverStatus} error={errors.tech} /></div>)}</div>
                                     {/* شروع بخش اضافه شده: نمایش فیلدهای ۵ تا ۱۰ */}
                                     <div className="grid grid-cols-2 gap-3 mt-3">
                                         {DYNAMIC_FIELDS_MAP.filter(f => f.key.startsWith('list')).map(field => {
@@ -418,7 +449,10 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                             
                                             // محاسبه نام فیلد + ستاره الزامی
                                             const isReq = fConfig?.required;
-                                            const label = (fConfig?.label || field.label) + (isReq ? " *" : "");
+                                            
+                                            const label = getLabel(field.key, field.label) + (fConfig?.required ? " *" : "");
+                                            
+
                                             
                                             return (
                                                 <NexusSelect 

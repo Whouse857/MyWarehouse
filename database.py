@@ -82,6 +82,9 @@ def init_db():
             if not conn.execute("SELECT key FROM app_config WHERE key = 'component_config'").fetchone():
                 conn.execute("INSERT INTO app_config (key, value) VALUES (?, ?)", ('component_config', json.dumps(DEFAULT_COMPONENT_CONFIG)))
             
+            # جلوگیری فیزیکی از ثبت کدهای تکراری در سطح دیتابیس
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_parts_part_code_unique ON parts (part_code) WHERE part_code IS NOT NULL AND part_code != '';")
+
             conn.commit()
             print("[INFO] Database Migration and Init successful.")
     except Exception as e:
