@@ -7,6 +7,7 @@
 // stateKey: نام متغیر در formData (دیتابیس)
 const DYNAMIC_FIELDS_MAP = [
     { key: 'units', stateKey: 'unit', label: 'واحد' },
+    { key: 'tolerances', stateKey: 'tol', label: 'تولرانس' },
     { key: 'paramOptions', stateKey: 'watt', label: 'پارامتر فنی' }, // مثلا وات
     { key: 'packages', stateKey: 'pkg', label: 'پکیج' },
     { key: 'techs', stateKey: 'tech', label: 'تکنولوژی' },
@@ -83,8 +84,6 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     const notify = useNotify();
     const dialog = useDialog();
     
-    const rTols = ["0.1%", "0.25%", "0.5%", "1%", "2%", "5%", "10%", "20%"];
-
     const loadData = useCallback(async () => { 
         try { 
             const [partsRes, contactsRes] = await Promise.all([fetchAPI('/parts'), fetchAPI('/contacts')]);
@@ -326,7 +325,11 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
     // --- تابع برای خواندن نام فیلدها از تنظیمات ادمین ---
     const getLabel = (key, defaultLabel) => {
-        return currentConfig.fields?.[key]?.label || defaultLabel;
+    const fConfig = currentConfig.fields?.[key];
+    const label = fConfig?.label || defaultLabel;
+    // چک کردن الزامی بودن: یا از تنظیمات ادمین یا موارد ذاتا الزامی (مثل واحد و پکیج)
+    const isRequired = fConfig ? fConfig.required : ['units', 'packages'].includes(key);
+    return label + (isRequired ? " *" : "");
     };
 
     // --- تابع برای چک کردن اینکه فیلد باید نمایش داده شود یا نه ---
@@ -360,7 +363,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                         const pCode = getPartCode(p, globalConfig);
                                         return (
                                             <div key={p.id} className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg border border-transparent hover:border-white/10 hover:bg-white/5 transition-all ${formData.id === p.id ? 'bg-nexus-primary/10 !border-nexus-primary/50' : ''}`}>
-                                                <div className="col-span-2 text-right text-nexus-accent font-mono text-[10px] font-bold tracking-tighter">{pCode}</div>
+                                                <div className="col-span-2 text-right text-nexus-accent font-mono text-[14px] font-bold tracking-tighter">{pCode}</div>
                                                 <div className="col-span-5 text-right flex flex-col justify-center gap-1">
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-white text-lg font-black ltr font-sans tracking-wide">{p.val}</span>
@@ -435,9 +438,9 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                         </div>
                                     </div>
                                     <div className="h-px bg-white/5 my-1"></div>
-                                    <div className="flex gap-3"><NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} />{isVisible('units') && (<div className="flex-1"><NexusSelect label={getLabel('units', 'واحد') + ' *'} options={currentConfig.units} value={formData.unit} onChange={e=>handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} /></div> )}</div>
-                                    <div className="flex gap-3">{isVisible('paramOptions') && (<NexusSelect label={getLabel('paramOptions', currentConfig.paramLabel)} options={currentConfig.paramOptions} value={formData.watt} onChange={e=>handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.watt} />)}<NexusSelect label="تولرانس" options={rTols} value={formData.tol} onChange={e=>handleChange('tol', e.target.value)} className="flex-1" disabled={!serverStatus} /></div>
-                                    <div className="flex gap-3">{isVisible('packages') && (<NexusSelect label={getLabel('packages', 'پکیج (Package)') + ' *'} options={currentConfig.packages} value={formData.pkg} onChange={e=>handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} />)}{isVisible('techs') && (<div className="flex-1"><label className="text-gray-400 text-xs mb-1 block font-medium">{getLabel('techs', 'تکنولوژی/نوع دقیق')}</label><NexusSelect options={currentConfig.techs} value={formData.tech} onChange={e=>handleChange('tech', e.target.value)} disabled={!serverStatus} error={errors.tech} /></div>)}</div>
+                                    <div className="flex gap-3"><NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} />{isVisible('units') && (<div className="flex-1"><NexusSelect label={getLabel('units', 'واحد')} options={currentConfig.units} value={formData.unit} onChange={e=>handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} /></div> )}</div>
+                                    <div className="flex gap-3">{isVisible('paramOptions') && (<NexusSelect label={getLabel('paramOptions', currentConfig.paramLabel)} options={currentConfig.paramOptions} value={formData.watt} onChange={e=>handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.watt} />)}<NexusSelect label={getLabel('tolerances', 'تولرانس')} options={currentConfig.tolerances || []} value={formData.tol} onChange={e => handleChange('tol', e.target.value)} className="flex-1" disabled={!serverStatus}error={errors.tol}/></div>
+                                    <div className="flex gap-3">{isVisible('packages') && (<NexusSelect label={getLabel('packages', 'پکیج (Package)') } options={currentConfig.packages} value={formData.pkg} onChange={e=>handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} />)}{isVisible('techs') && (<div className="flex-1"><label className="text-gray-400 text-xs mb-1 block font-medium">{getLabel('techs', 'تکنولوژی/نوع دقیق')}</label><NexusSelect options={currentConfig.techs} value={formData.tech} onChange={e=>handleChange('tech', e.target.value)} disabled={!serverStatus} error={errors.tech} /></div>)}</div>
                                     {/* شروع بخش اضافه شده: نمایش فیلدهای ۵ تا ۱۰ */}
                                     <div className="grid grid-cols-2 gap-3 mt-3">
                                         {DYNAMIC_FIELDS_MAP.filter(f => f.key.startsWith('list')).map(field => {
@@ -450,10 +453,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                             // محاسبه نام فیلد + ستاره الزامی
                                             const isReq = fConfig?.required;
                                             
-                                            const label = getLabel(field.key, field.label) + (fConfig?.required ? " *" : "");
-                                            
-
-                                            
+                                            const label = getLabel(field.key, field.label);
+                                               
                                             return (
                                                 <NexusSelect 
                                                     key={field.key}

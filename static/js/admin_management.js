@@ -36,6 +36,7 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     const handleDragEnd = (e) => { e.target.classList.remove('opacity-50'); dragItem.current = null; dragOverItem.current = null; const newConfig = { ...config }; sortedKeys.forEach((key, index) => { if (newConfig[key]) newConfig[key].priority = sortedKeys.length - index; }); setConfig(newConfig); };
 
     const listLabels = { 
+    'tolerances': { label: 'تولرانس', icon: 'percent' }, // این خط اضافه شد
     'packages': { label: 'پکیج‌ها', icon: 'box' }, 
     'techs': { label: 'تکنولوژی‌ها', icon: 'cpu' }, 
     'units': { label: 'واحدها', icon: 'ruler' }, 
@@ -141,6 +142,7 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         const newConfig = { ...config, 
             [newVal]: { 
             label: newVal, icon: 'box', 
+            tolerances: [],
             units: [], packages: [], techs: [], paramOptions: [], 
             // --- این خط را اضافه کنید ---
             list5: [], list6: [], list7: [], list8: [], list9: [], list10: [],
