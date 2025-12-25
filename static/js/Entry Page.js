@@ -211,7 +211,10 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         // 1. بررسی فیلدهای ثابت همیشگی
         if(!formData.val) newErrors.val = true;
         if(!formData.qty || Number(formData.qty) <= 0) newErrors.qty = true;
-        if(!formData.location) newErrors.location = true;
+        // بررسی الزامی بودن آدرس از تنظیمات General
+        const locSetting = globalConfig?.["General"]?.fields?.['locations'];
+        const isLocRequired = locSetting ? locSetting.required : true; // اگر تنظیم نشده بود، پیش‌فرض الزامی است
+        if(isLocRequired && !formData.location) newErrors.location = true;
         if(!formData.price_toman) newErrors.price_toman = true;
         // اگر وندور الزامی است:
         if(!formData.vendor_name) newErrors.vendor_name = true;
@@ -325,10 +328,15 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
     // --- تابع برای خواندن نام فیلدها از تنظیمات ادمین ---
     const getLabel = (key, defaultLabel) => {
-    const fConfig = currentConfig.fields?.[key];
+    const isLoc = key === 'location';
+    const targetConfig = isLoc ? globalConfig?.["General"] : currentConfig;
+    const configKey = isLoc ? 'locations' : key;
+
+    const fConfig = targetConfig?.fields?.[configKey];
     const label = fConfig?.label || defaultLabel;
-    // چک کردن الزامی بودن: یا از تنظیمات ادمین یا موارد ذاتا الزامی (مثل واحد و پکیج)
-    const isRequired = fConfig ? fConfig.required : ['units', 'packages'].includes(key);
+    
+    // چک کردن الزامی بودن: یا از تنظیمات ادمین یا موارد پیش‌فرض سیستم
+    const isRequired = fConfig ? fConfig.required : ['units', 'packages', 'location'].includes(key);
     return label + (isRequired ? " *" : "");
     };
 
@@ -476,7 +484,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                         <NexusInput label="قیمت دلار (تومان) *" value={formData.usd_rate} onChange={e=>handleChange('usd_rate', e.target.value)} disabled={!serverStatus} error={errors.usd_rate} className="flex-1" />
                                     </div>
                                     <div className="flex gap-3">
-                                        <NexusSelect label="آدرس نگهداری (Location) *" value={formData.location} onChange={e=>handleChange('location', e.target.value)} options={locationOptions} disabled={!serverStatus} error={errors.location} className="flex-1" />
+                                        <NexusSelect label={getLabel('location', 'آدرس نگهداری')} value={formData.location} onChange={e=>handleChange('location', e.target.value)} options={locationOptions} disabled={!serverStatus} error={errors.location} className="flex-1" />
                                         <NexusSelect label="نام فروشنده *" value={formData.vendor_name} onChange={e=>handleChange('vendor_name', e.target.value)} options={vendorOptions} disabled={!serverStatus} error={errors.vendor_name} className="flex-1" />
                                     </div>
                                     <div className="flex gap-3 items-end">
