@@ -331,18 +331,52 @@ def register_routes(app, server_state):
                 dup_params = (payload['val'], payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['tech'], payload['storage_location'])
                 
                 if part_id:
-                    existing = conn.execute(dup_sql + " AND id != ?", (*dup_params, part_id)).fetchone()
-                    if existing: return jsonify({"error": "Duplicate part"}), 400
-                    old = conn.execute('SELECT quantity FROM parts WHERE id = ?', (part_id,)).fetchone()
-                    old_q = old['quantity'] if old else 0
-                    if payload['quantity'] > old_q: op = 'ENTRY (Refill)'
-                    elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
-                    else: op = 'UPDATE (Edit)'
-                    qty_change = payload['quantity'] - old_q
+                    # ۱. دریافت اطلاعات فعلی قطعه از دیتابیس برای مقایسه
+                    old = conn.execute('SELECT * FROM parts WHERE id = ?', (part_id,)).fetchone()
                     
-                    # --- آپدیت دستور SQL برای ذخیره فیلدهای جدید ---
-                    conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=?, list5=?, list6=?, list7=?, list8=?, list9=?, list10=? WHERE id=?""", (*payload.values(), part_id))
-                    rid = part_id
+                    if not old:
+                        part_id = None
+                    else:
+                        # ۲. تعریف لیست فیلدهایی که باید تغییرات آن‌ها رصد شود
+                        track_fields = {
+                            "val": "مقدار", "watt": "پارامتر", "tolerance": "تولرانس", "package": "پکیج",
+                            "type": "دسته", "buy_date": "تاریخ خرید", "quantity": "تعداد", "toman_price": "قیمت تومان",
+                            "min_quantity": "حداقل موجودی", "vendor_name": "فروشنده", "storage_location": "آدرس",
+                            "tech": "تکنولوژی", "usd_rate": "نرخ دلار", "invoice_number": "شماره فاکتور",
+                            "purchase_links": "لینک‌ها",
+                            "list5": "فیلد۵", "list6": "فیلد۶", "list7": "فیلد۷", "list8": "فیلد۸", "list9": "فیلد۹", "list10": "فیلد۱۰"
+                        }
+                        
+                        changes = []
+                        for col, label in track_fields.items():
+                            new_v = payload.get(col)
+                            old_v = old[col]
+                            
+                            # مقایسه مقدار جدید و قدیم (نرمال‌سازی برای دقت بیشتر)
+                            if str(old_v if old_v is not None else "") != str(new_v if new_v is not None else ""):
+                                changes.append(f"{label}: {old_v} -> {new_v}")
+                        
+                        # ۳. پیاده‌سازی شرط عدم تغییر: اگر هیچ فیلدی عوض نشده بود، عملیات را متوقف کن
+                        if not changes:
+                            return jsonify({"success": True, "message": "No changes detected"})
+                        
+                        # ۴. ثبت جزئیات تغییرات در بخش توضیحات (Reason) لاگ
+                        detail_summary = " [اصلاح: " + " | ".join(changes) + "]"
+                        payload["reason"] = (payload.get("reason") or "") + detail_summary
+
+                        # ۵. حفظ منطق قبلی برای تشخیص نوع عملیات (ورود یا ویرایش)
+                        existing = conn.execute(dup_sql + " AND id != ?", (*dup_params, part_id)).fetchone()
+                        if existing: return jsonify({"error": "Duplicate part"}), 400
+                        
+                        old_q = old['quantity']
+                        if payload['quantity'] > old_q: op = 'ENTRY (Refill)'
+                        elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
+                        else: op = 'UPDATE (Edit)'
+                        qty_change = payload['quantity'] - old_q
+                        
+                        # دستور آپدیت قطعه در دیتابیس
+                        conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=?, list5=?, list6=?, list7=?, list8=?, list9=?, list10=? WHERE id=?""", (*payload.values(), part_id))
+                        rid = part_id
                 else:
                     existing = conn.execute(dup_sql, dup_params).fetchone()
                     if existing:
