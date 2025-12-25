@@ -86,7 +86,8 @@ def register_routes(app, server_state):
     def list_backups():
         try:
             files = [f for f in os.listdir(BACKUP_FOLDER) if f.endswith('.db')]
-            files.sort(reverse=True)
+            # مرتب‌سازی بر اساس زمان آخرین تغییر فایل در ویندوز (جدیدترین در ابتدای لیست)
+            files.sort(key=lambda x: os.path.getmtime(os.path.join(BACKUP_FOLDER, x)), reverse=True)
             backups = []
             for f in files:
                 path = os.path.join(BACKUP_FOLDER, f)
