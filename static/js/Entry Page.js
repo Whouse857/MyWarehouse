@@ -210,7 +210,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
         // 1. بررسی فیلدهای ثابت همیشگی
         if(!formData.val) newErrors.val = true;
-        if(!formData.qty || Number(formData.qty) <= 0) newErrors.qty = true;
+        // اجازه ثبت با تعداد صفر داده می‌شود، اما فیلد نباید خالی یا منفی باشد
+if(formData.qty === "" || Number(formData.qty) < 0) newErrors.qty = true;
         // بررسی الزامی بودن آدرس از تنظیمات General
         const locSetting = globalConfig?.["General"]?.fields?.['locations'];
         const isLocRequired = locSetting ? locSetting.required : true; // اگر تنظیم نشده بود، پیش‌فرض الزامی است
