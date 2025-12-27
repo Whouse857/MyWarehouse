@@ -380,7 +380,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                                     <div className="flex flex-wrap gap-2 text-[10px] text-gray-400 items-center">
                                                         {p.type && <span className="text-blue-300 font-bold">{p.type}</span>}
                                                         {p.watt && <span className="flex items-center gap-1"><i data-lucide="zap" className="w-3 h-3 text-yellow-500"></i>{p.watt}</span>}
-                                                        {p.tolerance && <span className="flex items-center gap-1"><i data-lucide="percent" className="w-3 h-3 text-purple-400"></i>{p.tolerance}</span>}
+                                                        {p.tolerance && <span className="text-purple-400 font-bold">{p.tolerance}</span>}
                                                         {p.tech && <span className="text-gray-500 border-x border-gray-700 px-2">{p.tech}</span>}
                                                         {p.storage_location && <span className="flex items-center gap-1 text-orange-300 bg-orange-500/10 px-1 rounded border border-orange-500/20"><i data-lucide="map-pin" className="w-3 h-3"></i>{p.storage_location}</span>}
                                                     </div>

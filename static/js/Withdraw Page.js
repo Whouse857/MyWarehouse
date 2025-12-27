@@ -339,7 +339,7 @@ const WithdrawPage = ({ user, serverStatus }) => {
                                                     </div>
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {part.watt && <span className="text-[9px] text-yellow-500/80 font-bold bg-yellow-500/5 px-1.5 rounded flex items-center gap-0.5"><i data-lucide="zap" className="w-2.5 h-2.5"></i>{part.watt}</span>}
-                                                        {part.tolerance && <span className="text-[9px] text-purple-400 bg-purple-500/5 px-1.5 rounded">Tol: {part.tolerance}</span>}
+                                                        {part.tolerance && <span className="text-[9px] text-purple-400 font-bold bg-purple-500/5 px-1.5 rounded">{part.tolerance}</span>}
                                                         {part.tech && <span className="text-[9px] text-gray-500 bg-black/20 px-1.5 rounded truncate max-w-[100px]">{part.tech}</span>}
                                                     </div>
                                                     <div className="pt-1.5 flex items-center gap-1 text-[10px] text-orange-300/70">
