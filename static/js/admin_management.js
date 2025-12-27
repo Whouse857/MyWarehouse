@@ -36,19 +36,18 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     const handleDragEnd = (e) => { e.target.classList.remove('opacity-50'); dragItem.current = null; dragOverItem.current = null; const newConfig = { ...config }; sortedKeys.forEach((key, index) => { if (newConfig[key]) newConfig[key].priority = sortedKeys.length - index; }); setConfig(newConfig); };
 
     const listLabels = { 
-    'tolerances': { label: 'تولرانس', icon: 'list' },
-    'packages': { label: 'پکیج‌ها', icon: 'box' }, 
-    'techs': { label: 'تکنولوژی‌ها', icon: 'cpu' }, 
-    'units': { label: 'واحدها', icon: 'ruler' }, 
-    'paramOptions': { label: 'مقادیر پارامتر', icon: 'sliders' }, 
-    'locations': { label: 'آدرس‌های انبار', icon: 'map-pin' },
-    // --- این‌ها را اضافه کنید ---
-    'list5': { label: 'فیلد ۵', icon: 'list' },
-    'list6': { label: 'فیلد ۶', icon: 'list' },
-    'list7': { label: 'فیلد ۷', icon: 'list' },
-    'list8': { label: 'فیلد ۸', icon: 'list' },
-    'list9': { label: 'فیلد ۹', icon: 'list' },
-    'list10': { label: 'فیلد ۱۰', icon: 'list' }
+        'units': { label: 'واحدها', icon: 'ruler' }, 
+        'paramOptions': { label: 'مقادیر پارامتر', icon: 'sliders' }, 
+        'tolerances': { label: 'تولرانس / ویژگی فنی', icon: 'list' },
+        'packages': { label: 'پکیج‌ها', icon: 'box' }, 
+        'techs': { label: 'تکنولوژی‌ها', icon: 'cpu' }, 
+        'list5': { label: 'فیلد ۵', icon: 'list' },
+        'list6': { label: 'فیلد ۶', icon: 'list' },
+        'list7': { label: 'فیلد ۷', icon: 'list' },
+        'list8': { label: 'فیلد ۸', icon: 'list' },
+        'list9': { label: 'فیلد ۹', icon: 'list' },
+        'list10': { label: 'فیلد ۱۰', icon: 'list' },
+        'locations': { label: 'آدرس‌های انبار (General)', icon: 'map-pin' }
     };
 
     const handleFieldConfigChange = (listName, key, value) => {
