@@ -261,10 +261,37 @@ def register_routes(app, server_state):
         try:
             new_config = request.json
             with get_db_connection() as conn:
+                # ۱. دریافت تنظیمات قبلی برای مقایسه پیشوندها
+                old_row = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
+                if old_row:
+                    old_config = json.loads(old_row['value'])
+                    
+                    # ۲. بررسی تغییر پیشوند در هر دسته
+                    for category, settings in new_config.items():
+                        if category in old_config:
+                            old_prefix = old_config[category].get('prefix')
+                            new_prefix = settings.get('prefix')
+                            
+                            # اگر پیشوند تغییر کرده بود و خالی نبود
+                            if old_prefix and new_prefix and old_prefix != new_prefix:
+                                # به‌روزرسانی تمام کدهای انبار در جدول قطعات
+                                # کد جدید = پیشوند جدید + بقیه کد قدیمی (از کاراکتر ۴ به بعد)
+                                conn.execute(
+                                    "UPDATE parts SET part_code = ? || SUBSTR(part_code, ?) WHERE type = ? AND part_code LIKE ?",
+                                    (new_prefix, len(old_prefix) + 1, category, f"{old_prefix}%")
+                                )
+                                # به‌روزرسانی کدها در جدول لاگ‌ها برای هماهنگی تاریخچه
+                                conn.execute(
+                                    "UPDATE purchase_log SET part_code = ? || SUBSTR(part_code, ?) WHERE type = ? AND part_code LIKE ?",
+                                    (new_prefix, len(old_prefix) + 1, category, f"{old_prefix}%")
+                                )
+
+                # ۳. ذخیره تنظیمات جدید
                 conn.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ('component_config', json.dumps(new_config)))
                 conn.commit()
                 return jsonify({"success": True})
-        except Exception as e: return jsonify({"error": str(e)}), 500
+        except Exception as e: 
+            return jsonify({"error": str(e)}), 500
 
     @app.route('/api/settings/rename', methods=['POST'])
     def rename_item_api():
