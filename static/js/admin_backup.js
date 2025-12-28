@@ -1,7 +1,7 @@
 // [TAG: MODULE_ADMIN_BACKUP]
 // ماژول بک‌آپ و بازیابی - تفکیک شده از Admin Pages.js
 
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useRef } = React;
 
 const BackupPage = () => {
     const [backups, setBackups] = useState([]);
@@ -96,6 +96,11 @@ const BackupPage = () => {
         } catch (e) { return dateStr; }
     };
 
+    const handleDownload = (filename) => {
+        // باز کردن لینک دانلود در یک تب جدید برای شروع دانلود
+        window.open(`${API_URL}/backup/download/${filename}`, '_blank');
+    };
+
     return (
         <div className="flex-1 p-6 overflow-hidden flex flex-col h-full">
             <header className="mb-6 flex justify-between items-center">
@@ -128,8 +133,15 @@ const BackupPage = () => {
                                     <span className="font-mono ltr text-gray-600">{b.name.replace('nexus_backup_', '').replace('.db', '')}</span>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={() => handleRestore(b.name)} className="flex-1 py-2 bg-white/5 hover:bg-nexus-warning hover:text-black text-nexus-warning border border-nexus-warning/20 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1"><i data-lucide="rotate-ccw" className="w-3 h-3"></i>بازگردانی</button>
-                                    <button onClick={() => handleDelete(b.name)} className="px-3 py-2 bg-white/5 hover:bg-red-500 hover:text-white text-gray-400 border border-white/5 rounded-lg transition"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                    <button onClick={() => handleDownload(b.name)} className="px-3 py-2 bg-white/5 hover:bg-blue-500 hover:text-white text-blue-400 border border-blue-500/20 rounded-lg transition" title="دانلود روی سیستم">
+                                        <i data-lucide="download" className="w-4 h-4"></i>
+                                    </button>
+                                    <button onClick={() => handleRestore(b.name)} className="flex-1 py-2 bg-white/5 hover:bg-nexus-warning hover:text-black text-nexus-warning border border-nexus-warning/20 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1">
+                                        <i data-lucide="rotate-ccw" className="w-3 h-3"></i>بازگردانی
+                                    </button>
+                                    <button onClick={() => handleDelete(b.name)} className="px-3 py-2 bg-white/5 hover:bg-red-500 hover:text-white text-gray-400 border border-white/5 rounded-lg transition">
+                                        <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>

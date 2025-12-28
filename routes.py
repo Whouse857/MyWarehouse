@@ -4,8 +4,8 @@ import time
 import json
 import shutil
 import sqlite3
-from datetime import datetime
 import threading
+from datetime import datetime
 from flask import jsonify, request, Response, send_file
 from config import DATABASE_FILE, INDEX_FILE, BACKUP_FOLDER, DEFAULT_COMPONENT_CONFIG
 from database import get_db_connection
@@ -43,48 +43,43 @@ def register_routes(app, server_state):
         return jsonify({"status": "exiting"}), 200
 
     # --- بخش بک‌آپ ---
-    # --- بخش بک‌آپ (نسخه جدید با انتخاب پوشه ویندوز) ---
+    # --- بخش بک‌آپ (نسخه بهینه: ذخیره داخلی + قابلیت دانلود) ---
     @app.route('/api/backup/create', methods=['POST'])
     def create_backup():
         try:
-            # ۱. باز کردن پنجره انتخاب پوشه ویندوز
-            from tkinter import filedialog, Tk
-            root = Tk()
-            root.withdraw() 
-            root.attributes("-topmost", True) 
-            
-            dest_folder = filedialog.askdirectory(title="محل ذخیره فایل بک‌آپ را انتخاب کنید")
-            root.destroy()
-            
-            if not dest_folder:
-                return jsonify({"error": "عملیات توسط کاربر لغو شد"}), 400
-
             data = request.json or {}
             username = data.get('username', 'System')
             
-            # ۲. انتقال اطلاعات از WAL به فایل اصلی قبل از کپی (بسیار مهم)
+            # ۱. انتقال اطلاعات از WAL به فایل اصلی قبل از کپی
             try:
                 conn = get_db_connection()
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                conn.close() # بستن حتمی اتصال برای جلوگیری از قفل شدن فایل
+                conn.close()
             except Exception as e:
                 print(f"WAL Checkpoint Error: {e}")
             
-            # ۳. نام‌گذاری و مسیردهی
+            # ۲. نام‌گذاری و مسیردهی (فقط در پوشه بک‌آپ داخلی برنامه)
             safe_username = "".join([c for c in username if c.isalnum() or c in ('-','_')])
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             filename = f"nexus_backup_{safe_username}_{timestamp}.db"
-            
-            # ۴. کپی فایل دیتابیس (استفاده از متغیر استاندارد پروژه)
-            dest_path = os.path.join(dest_folder, filename)
-            shutil.copy2(DATABASE_FILE, dest_path)
-            
-            # ۵. کپی در پوشه بک‌آپ داخلی برنامه
             internal_dest = os.path.join(BACKUP_FOLDER, filename)
+            
+            # ۳. کپی فایل دیتابیس در مخزن مرکزی برنامه
             shutil.copy2(DATABASE_FILE, internal_dest)
             
-            return jsonify({"success": True, "filename": filename, "full_path": dest_path})
+            return jsonify({"success": True, "filename": filename})
         except Exception as e: 
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/api/backup/download/<filename>', methods=['GET'])
+    def download_backup(filename: str):
+        """ارسال فایل برای دانلود روی سیستم کاربر"""
+        try:
+            path = os.path.join(BACKUP_FOLDER, filename)
+            if not os.path.exists(path):
+                return jsonify({"error": "فایل یافت نشد"}), 404
+            return send_file(path, as_attachment=True)
+        except Exception as e:
             return jsonify({"error": str(e)}), 500
         
     @app.route('/api/backup/list', methods=['GET'])
@@ -144,6 +139,14 @@ def register_routes(app, server_state):
         try:
             src = os.path.join(BACKUP_FOLDER, filename)
             if not os.path.exists(src): return jsonify({"error": "File not found"}), 404
+            
+            # ۱. آزاد کردن فایل دیتابیس قبل از بازگردانی (بسیار مهم)
+            try:
+                conn = get_db_connection()
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.close()
+            except: pass
+
             temp_backup = DATABASE_FILE + ".tmp"
             if os.path.exists(DATABASE_FILE): shutil.copy2(DATABASE_FILE, temp_backup)
             try:
