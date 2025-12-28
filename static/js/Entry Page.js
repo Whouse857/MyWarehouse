@@ -1,6 +1,6 @@
 // [TAG: PAGE_ENTRY]
 // صفحه ورود قطعه (ثبت اطلاعات)
-// نسخه اصلاح شده: یکپارچه‌سازی وضعیت اولیه و بازنشانی فرم
+// نسخه اصلاح شده: بهینه‌سازی ساختار JSX و مدیریت توابع کمکی
 
 /**
  * تنظیمات ثابت و اولیه‌ی فرم
@@ -20,7 +20,7 @@ const DYNAMIC_FIELDS_MAP = [
 ];
 
 /**
- * مورد ۵: تعریف وضعیت اولیه فرم در خارج از کامپوننت
+ * تعریف وضعیت اولیه فرم در خارج از کامپوننت
  */
 const getInitialFormData = (type = "Resistor") => ({
   id: null,
@@ -44,7 +44,7 @@ const getInitialFormData = (type = "Resistor") => ({
   list5: "", list6: "", list7: "", list8: "", list9: "", list10: ""
 });
 
-/** * --- توابع کمکی ---
+/** * --- توابع کمکی عمومی ---
  */
 const cleanText = (str) => String(str || '').toLowerCase().replace(/\s+/g, '');
 const normalizeText = (s) => s ? String(s).toLowerCase().replace(/,/g, '').trim() : '';
@@ -137,9 +137,7 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
  * کامپوننت اصلی صفحه ورود و مدیریت قطعات
  */
 const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
-  // استفاده از وضعیت اولیه متمرکز
   const [formData, setFormData] = useState(() => getInitialFormData());
-  
   const [partsList, setPartsList] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [filters, setFilters] = useState({ val: '', pkg: '', loc: '', type: '', code: '' });
@@ -164,11 +162,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
   const resetForm = useCallback((type = "Resistor") => {
     const typeConfig = globalConfig?.[type] || globalConfig?.["Resistor"] || {};
     const defUnit = (typeConfig.units && typeConfig.units[0]) || "";
-    
-    setFormData({
-      ...getInitialFormData(type),
-      unit: defUnit
-    });
+    setFormData({ ...getInitialFormData(type), unit: defUnit });
     setErrors({});
   }, [globalConfig]);
 
@@ -180,12 +174,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
       if (formData.id && p.id === formData.id) return false;
       const pType = cleanText(p.type);
       const pVal = cleanText(p.val);
-      const matchType = pType === cleanText(formData.type);
-      const matchVal = pVal === formFullVal;
-      if (!matchType || !matchVal) return false;
-      if (formData.pkg && p.package) {
-        if (cleanText(p.package) !== cleanText(formData.pkg)) return false;
-      }
+      if (pType !== cleanText(formData.type) || pVal !== formFullVal) return false;
+      if (formData.pkg && p.package && cleanText(p.package) !== cleanText(formData.pkg)) return false;
       return true;
     });
   }, [formData.val, formData.unit, formData.pkg, formData.type, partsList, formData.id]);
@@ -211,7 +201,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
       if (activeCategory && pType !== activeCategory) return false;
       if (filterVal && !pVal.includes(filterVal)) return false;
       if (filterPkg && !pPkg.includes(filterPkg)) return false;
-      if (filterLoc && !pVal.includes(filterLoc)) return false; // فیلتر آدرس بر اساس مقدار یا آدرس
+      if (filterLoc && !pLoc.includes(filterLoc)) return false; // اصلاح شد: استفاده از pLoc برای آدرس
       if (filterType && !pType.includes(filterType)) return false;
       if (filterCode && !pCode.includes(filterCode)) return false;
       return true;
@@ -248,38 +238,20 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     if (key === 'type') {
       const typeConfig = globalConfig?.[processedValue] || globalConfig?.["Resistor"] || {};
       const defaultUnit = (typeConfig.units && typeConfig.units.length > 0) ? typeConfig.units[0] : "";
-      
-      setFormData(prev => ({ 
-        ...prev, 
-        [key]: processedValue, 
-        unit: defaultUnit, 
-        watt: "", 
-        pkg: "", 
-        tech: "" 
-      }));
+      setFormData(prev => ({ ...prev, [key]: processedValue, unit: defaultUnit, watt: "", pkg: "", tech: "" }));
     } else {
       setFormData(prev => ({ ...prev, [key]: processedValue }));
     }
   }, [globalConfig]);
 
   const handleAddLink = () => {
-    if (!linkInput.trim()) return;
-    if (formData.purchase_links.length >= 5) {
-      notify.show('محدودیت', 'حداکثر ۵ لینک می‌توانید اضافه کنید.', 'warning');
-      return;
-    }
-    setFormData(prev => ({
-      ...prev,
-      purchase_links: [...prev.purchase_links, linkInput.trim()]
-    }));
+    if (!linkInput.trim() || formData.purchase_links.length >= 5) return;
+    setFormData(prev => ({ ...prev, purchase_links: [...prev.purchase_links, linkInput.trim()] }));
     setLinkInput("");
   };
 
   const handleRemoveLink = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      purchase_links: prev.purchase_links.filter((_, i) => i !== index)
-    }));
+    setFormData(prev => ({ ...prev, purchase_links: prev.purchase_links.filter((_, i) => i !== index) }));
   };
 
   const handleSubmit = () => {
@@ -292,21 +264,13 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     if (!formData.vendor_name) newErrors.vendor_name = true;
 
     const locSetting = globalConfig?.["General"]?.fields?.['locations'];
-    const isLocRequired = locSetting ? locSetting.required : true;
-    if (isLocRequired && !formData.location) newErrors.location = true;
+    if ((locSetting ? locSetting.required : true) && !formData.location) newErrors.location = true;
 
     DYNAMIC_FIELDS_MAP.forEach(field => {
-      const fieldConfig = typeConfig.fields?.[field.key];
-      const isBaseField = ['units', 'paramOptions', 'packages', 'techs'].includes(field.key);
-      const isVisible = fieldConfig ? fieldConfig.visible : isBaseField;
-      const isDefaultRequired = ['units', 'packages'].includes(field.key);
-      const isRequired = fieldConfig ? fieldConfig.required : isDefaultRequired;
-
-      if (isVisible && isRequired) {
-        if (!formData[field.stateKey]) {
-          newErrors[field.stateKey] = true;
-        }
-      }
+      const fConfig = typeConfig.fields?.[field.key];
+      const isVisible = fConfig ? fConfig.visible : ['units', 'paramOptions', 'packages', 'techs'].includes(field.key);
+      const isRequired = fConfig ? fConfig.required : ['units', 'packages'].includes(field.key);
+      if (isVisible && isRequired && !formData[field.stateKey]) newErrors[field.stateKey] = true;
     });
 
     if (Object.keys(newErrors).length > 0) {
@@ -318,9 +282,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
   };
 
   const handleFinalSubmit = async () => {
-    let fullVal = formData.val;
-    if (formData.unit && formData.unit !== "-") fullVal += formData.unit;
-
+    const fullVal = formData.val + (formData.unit && formData.unit !== "-" ? formData.unit : "");
     const payload = {
       ...formData,
       val: fullVal,
@@ -328,15 +290,14 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
       min_qty: Number(formData.min_qty) || 1,
       price: String(formData.price_toman).replace(/,/g, ''),
       usd_rate: String(formData.usd_rate).replace(/,/g, ''),
-      username: user.username,
-      invoice_number: formData.invoice_number
+      username: user.username
     };
 
     try {
       const { ok, data } = await fetchAPI('/save', { method: 'POST', body: payload });
       if (ok) {
         loadData();
-        resetForm(formData.type); // استفاده از تابع بازنشانی متمرکز
+        resetForm(formData.type);
         notify.show('موفقیت', 'قطعه با موفقیت در انبار ذخیره شد.', 'success');
         setShowSummary(false);
       } else {
@@ -349,27 +310,17 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
   const handleEdit = useCallback((p) => {
     let category = p.type || "Resistor";
-    if (!globalConfig?.[category]) {
-      if (p.val.includes("F")) category = "Capacitor";
-      else if (p.val.includes("H")) category = "Inductor";
-      else category = "Resistor";
-    }
-    const config = globalConfig?.[category] ? globalConfig[category] : (globalConfig?.["Resistor"] || {});
-    let u = (config.units && config.units.length > 0) ? config.units[0] : "";
+    const config = globalConfig?.[category] || globalConfig?.["Resistor"] || {};
+    let u = (config.units && config.units[0]) || "";
     let v = p.val || "";
     if (config.units) {
-      for (let unit of config.units) {
+      for (const unit of config.units) {
         if (v.endsWith(unit)) { u = unit; v = v.slice(0, -unit.length); break; }
       }
     }
 
     let links = [];
-    try {
-      if (p.purchase_links) {
-        links = JSON.parse(p.purchase_links);
-        if (!Array.isArray(links)) links = [];
-      }
-    } catch (e) { links = []; }
+    try { if (p.purchase_links) links = JSON.parse(p.purchase_links); } catch (e) { }
 
     setFormData({
       ...p,
@@ -381,16 +332,13 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
       tech: p.tech || "",
       watt: p.watt,
       date: p.buy_date,
-      qty: (p.quantity === null || p.quantity === undefined) ? "" : p.quantity,
+      qty: p.quantity ?? "",
       price_toman: formatNumberWithCommas(p.toman_price),
       usd_rate: formatNumberWithCommas(p.usd_rate || ""),
-      min_qty: (p.min_quantity === null || p.min_quantity === undefined) ? "" : p.min_quantity,
+      min_qty: p.min_quantity ?? "",
       location: p.storage_location || "",
-      purchase_links: links,
-      invoice_number: p.invoice_number,
-      part_code: p.part_code,
-      list5: p.list5 || "", list6: p.list6 || "", list7: p.list7 || "",
-      list8: p.list8 || "", list9: p.list9 || "", list10: p.list10 || ""
+      purchase_links: Array.isArray(links) ? links : [],
+      invoice_number: p.invoice_number || ""
     });
     setErrors({});
   }, [globalConfig]);
@@ -406,9 +354,10 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     }
   }, [dialog, loadData, notify]);
 
-  const currentConfig = (globalConfig?.[formData.type]) ? globalConfig[formData.type] : (globalConfig?.["Resistor"]) || { units: [], paramOptions: [], packages: [], techs: [], icon: 'circle', label: 'Unknown', prefix: 'PRT' };
+  const currentConfig = globalConfig?.[formData.type] || globalConfig?.["Resistor"] || { units: [], paramOptions: [], packages: [], techs: [] };
 
-  const getLabel = (key, defaultLabel) => {
+  // بهینه‌سازی توابع کمکی داخلی با useCallback
+  const getLabel = useCallback((key, defaultLabel) => {
     const isLoc = key === 'location';
     const targetConfig = isLoc ? globalConfig?.["General"] : currentConfig;
     const configKey = isLoc ? 'locations' : key;
@@ -416,13 +365,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     const label = fConfig?.label || defaultLabel;
     const isRequired = fConfig ? fConfig.required : ['units', 'packages', 'location'].includes(key);
     return label + (isRequired ? " *" : "");
-  };
+  }, [currentConfig, globalConfig]);
 
-  const isVisible = (key) => {
+  const isVisible = useCallback((key) => {
     const fConfig = currentConfig.fields?.[key];
-    const isBase = ['units', 'paramOptions', 'packages', 'techs'].includes(key);
-    return fConfig ? fConfig.visible : isBase;
-  };
+    return fConfig ? fConfig.visible : ['units', 'paramOptions', 'packages', 'techs'].includes(key);
+  }, [currentConfig]);
 
   return (
     <ErrorBoundary>
@@ -458,15 +406,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
                 <div className="p-2 space-y-2">
                   {filteredParts.map(p => (
-                    <PartRow 
-                      key={p.id} 
-                      p={p} 
-                      globalConfig={globalConfig} 
-                      isSelected={formData.id === p.id} 
-                      serverStatus={serverStatus} 
-                      onEdit={handleEdit} 
-                      onDelete={handleDelete} 
-                    />
+                    <PartRow key={p.id} p={p} globalConfig={globalConfig} isSelected={formData.id === p.id} serverStatus={serverStatus} onEdit={handleEdit} onDelete={handleDelete} />
                   ))}
                 </div>
               </div>
@@ -526,63 +466,32 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                 <div className="space-y-4 pl-1 pr-1">
                   <div className="flex flex-col">
                     <label className="text-nexus-accent text-xs mb-1 block font-bold">دسته‌بندی قطعه (Component Type)</label>
-                    <div className="relative">
-                      <select value={formData.type} onChange={e => handleChange('type', e.target.value)} disabled={!serverStatus} className="nexus-input w-full px-3 py-2 text-sm appearance-none cursor-pointer font-bold text-yellow-400 bg-slate-900/80 border-nexus-accent/30">
-                        {Object.keys(globalConfig)
-                          .filter(key => key !== 'General')
-                          .sort((a, b) => (globalConfig[b].priority || 0) - (globalConfig[a].priority || 0))
-                          .map(key => <option key={key} value={key}>{globalConfig[key].label}</option>)}
-                      </select>
-                    </div>
+                    <select value={formData.type} onChange={e => handleChange('type', e.target.value)} disabled={!serverStatus} className="nexus-input w-full px-3 py-2 text-sm font-bold text-yellow-400 bg-slate-900/80 border-nexus-accent/30 appearance-none cursor-pointer">
+                      {Object.keys(globalConfig).filter(k => k !== 'General').sort((a, b) => (globalConfig[b].priority || 0) - (globalConfig[a].priority || 0)).map(k => <option key={k} value={k}>{globalConfig[k].label}</option>)}
+                    </select>
                   </div>
 
                   <div className="h-px bg-white/5 my-1"></div>
 
                   <div className="flex gap-3">
                     <NexusInput label="مقدار (Value) *" value={formData.val} onChange={e => handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} />
-                    {isVisible('units') && (
-                      <div className="flex-1">
-                        <NexusSelect label={getLabel('units', 'واحد')} options={currentConfig.units} value={formData.unit} onChange={e => handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} />
-                      </div>
-                    )}
+                    {isVisible('units') && <div className="flex-1"><NexusSelect label={getLabel('units', 'واحد')} options={currentConfig.units} value={formData.unit} onChange={e => handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} /></div>}
                   </div>
 
                   <div className="flex gap-3">
-                    {isVisible('paramOptions') && (
-                      <NexusSelect label={getLabel('paramOptions', currentConfig.paramLabel)} options={currentConfig.paramOptions} value={formData.watt} onChange={e => handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.watt} />
-                    )}
+                    {isVisible('paramOptions') && <NexusSelect label={getLabel('paramOptions', currentConfig.paramLabel)} options={currentConfig.paramOptions} value={formData.watt} onChange={e => handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.watt} />}
                     <NexusSelect label={getLabel('tolerances', 'تولرانس')} options={currentConfig.tolerances || []} value={formData.tol} onChange={e => handleChange('tol', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.tol} />
                   </div>
 
                   <div className="flex gap-3">
-                    {isVisible('packages') && (
-                      <NexusSelect label={getLabel('packages', 'پکیج (Package)')} options={currentConfig.packages} value={formData.pkg} onChange={e => handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} />
-                    )}
-                    {isVisible('techs') && (
-                      <div className="flex-1">
-                        <label className="text-gray-400 text-xs mb-1 block font-medium">{getLabel('techs', 'تکنولوژی/نوع دقیق')}</label>
-                        <NexusSelect options={currentConfig.techs} value={formData.tech} onChange={e => handleChange('tech', e.target.value)} disabled={!serverStatus} error={errors.tech} />
-                      </div>
-                    )}
+                    {isVisible('packages') && <NexusSelect label={getLabel('packages', 'پکیج (Package)')} options={currentConfig.packages} value={formData.pkg} onChange={e => handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} />}
+                    {isVisible('techs') && <div className="flex-1"><label className="text-gray-400 text-xs mb-1 block font-medium">{getLabel('techs', 'تکنولوژی/نوع دقیق')}</label><NexusSelect options={currentConfig.techs} value={formData.tech} onChange={e => handleChange('tech', e.target.value)} disabled={!serverStatus} error={errors.tech} /></div>}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 mt-3">
                     {DYNAMIC_FIELDS_MAP.filter(f => f.key.startsWith('list')).map(field => {
-                      const fConfig = currentConfig.fields?.[field.key];
-                      if (fConfig?.visible === false) return null;
-                      const options = currentConfig[field.key] || [];
-                      const label = getLabel(field.key, field.label);
-                      return (
-                        <NexusSelect
-                          key={field.key}
-                          label={label}
-                          value={formData[field.stateKey]}
-                          options={options}
-                          onChange={e => handleChange(field.stateKey, e.target.value)}
-                          disabled={!serverStatus}
-                          error={errors[field.stateKey]}
-                        />
-                      );
+                      if (!isVisible(field.key)) return null;
+                      return <NexusSelect key={field.key} label={getLabel(field.key, field.label)} value={formData[field.stateKey]} options={currentConfig[field.key] || []} onChange={e => handleChange(field.stateKey, e.target.value)} disabled={!serverStatus} error={errors[field.stateKey]} />;
                     })}
                   </div>
 
@@ -604,12 +513,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                   </div>
 
                   <div className="flex gap-3 items-end">
-                    <div className="flex-1">
-                      <PersianDatePicker label="تاریخ خرید/فاکتور" value={formData.date} onChange={date => handleChange('date', date)} />
-                    </div>
-                    <div className="flex-1">
-                      <NexusInput label="شماره فاکتور" value={formData.invoice_number} onChange={e => handleChange('invoice_number', e.target.value)} disabled={!serverStatus} placeholder="مثلاً ۱۲۳۴۵" />
-                    </div>
+                    <div className="flex-1"><PersianDatePicker label="تاریخ خرید/فاکتور" value={formData.date} onChange={date => handleChange('date', date)} /></div>
+                    <div className="flex-1"><NexusInput label="شماره فاکتور" value={formData.invoice_number} onChange={e => handleChange('invoice_number', e.target.value)} disabled={!serverStatus} placeholder="مثلاً ۱۲۳۴۵" /></div>
                   </div>
 
                   <NexusInput label="پروژه / دلیل خرید" value={formData.reason} onChange={e => handleChange('reason', e.target.value)} disabled={!serverStatus} />
@@ -618,9 +523,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                     <label className="text-nexus-accent text-xs mb-2 block font-bold">لینک‌های خرید (اختیاری - حداکثر ۵ مورد)</label>
                     <div className="flex gap-2 mb-2">
                       <input className="nexus-input flex-1 px-3 py-2 text-xs ltr placeholder-gray-600" placeholder="https://..." value={linkInput} onChange={e => setLinkInput(e.target.value)} />
-                      <button onClick={handleAddLink} className="bg-nexus-primary hover:bg-indigo-600 text-white p-2 rounded-lg transition disabled:opacity-50" disabled={formData.purchase_links.length >= 5}>
-                        <i data-lucide="plus" className="w-4 h-4"></i>
-                      </button>
+                      <button onClick={handleAddLink} className="bg-nexus-primary hover:bg-indigo-600 text-white p-2 rounded-lg transition disabled:opacity-50" disabled={formData.purchase_links.length >= 5}><i data-lucide="plus" className="w-4 h-4"></i></button>
                     </div>
                     <div className="space-y-1.5">
                       {formData.purchase_links.map((link, idx) => (
