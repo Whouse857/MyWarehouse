@@ -4,8 +4,8 @@ import time
 import json
 import shutil
 import sqlite3
-import threading
 from datetime import datetime
+import threading
 from flask import jsonify, request, Response, send_file
 from config import DATABASE_FILE, INDEX_FILE, BACKUP_FOLDER, DEFAULT_COMPONENT_CONFIG
 from database import get_db_connection
@@ -50,31 +50,36 @@ def register_routes(app, server_state):
             # ۱. باز کردن پنجره انتخاب پوشه ویندوز
             from tkinter import filedialog, Tk
             root = Tk()
-            root.withdraw() # مخفی کردن پنجره اصلی tkinter
-            root.attributes("-topmost", True) # آوردن پنجره به روی بقیه برنامه‌ها
+            root.withdraw() 
+            root.attributes("-topmost", True) 
             
-            # ۲. دریافت مسیر از کاربر
             dest_folder = filedialog.askdirectory(title="محل ذخیره فایل بک‌آپ را انتخاب کنید")
             root.destroy()
             
-            # اگر کاربر کنسل کرد
             if not dest_folder:
                 return jsonify({"error": "عملیات توسط کاربر لغو شد"}), 400
 
             data = request.json or {}
             username = data.get('username', 'System')
+            
+            # ۲. انتقال اطلاعات از WAL به فایل اصلی قبل از کپی (بسیار مهم)
+            try:
+                conn = get_db_connection()
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.close() # بستن حتمی اتصال برای جلوگیری از قفل شدن فایل
+            except Exception as e:
+                print(f"WAL Checkpoint Error: {e}")
+            
+            # ۳. نام‌گذاری و مسیردهی
             safe_username = "".join([c for c in username if c.isalnum() or c in ('-','_')])
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             filename = f"nexus_backup_{safe_username}_{timestamp}.db"
             
-            # ۳. تهیه بک‌آپ و کپی در مسیر انتخابی
-            with get_db_connection() as conn: conn.execute("PRAGMA wal_checkpoint(FULL);")
-            time.sleep(0.1)
-            
+            # ۴. کپی فایل دیتابیس (استفاده از متغیر استاندارد پروژه)
             dest_path = os.path.join(dest_folder, filename)
             shutil.copy2(DATABASE_FILE, dest_path)
             
-            # ۴. یک کپی هم برای لیست شدن در خود برنامه در پوشه backups می‌گذاریم
+            # ۵. کپی در پوشه بک‌آپ داخلی برنامه
             internal_dest = os.path.join(BACKUP_FOLDER, filename)
             shutil.copy2(DATABASE_FILE, internal_dest)
             
@@ -106,7 +111,34 @@ def register_routes(app, server_state):
                 backups.append({"name": f, "size": round(size, 2), "date": readable_date, "creator": creator})
             return jsonify(backups)
         except Exception as e: return jsonify({"error": str(e)}), 500
+    @app.route('/api/backup/restore_upload', methods=['POST'])
+    def restore_database_upload():
+        """دریافت فایل دیتابیس از کاربر و جایگزینی آن با دیتابیس فعلی"""
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "فایلی ارسال نشده است"}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"success": False, "error": "نام فایل نامعتبر است"}), 400
 
+        try:
+            # ۱. تلاش برای آزاد کردن فایل دیتابیس قبل از جایگزینی
+            try:
+                conn = get_db_connection()
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.close()
+            except: pass
+            
+            # ۲. ذخیره مستقیم روی فایل اصلی دیتابیس پروژه
+            file.save(DATABASE_FILE)
+            
+            return jsonify({
+                "success": True, 
+                "message": "دیتابیس با موفقیت بازگردانی شد."
+            })
+        except Exception as e:
+            return jsonify({"success": False, "error": f"خطا در جایگزینی فایل: {str(e)}"}), 500
+    
     @app.route('/api/backup/restore/<filename>', methods=['POST'])
     def restore_backup(filename: str):
         try:

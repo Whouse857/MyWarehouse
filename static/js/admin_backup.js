@@ -6,6 +6,7 @@ const { useState, useEffect, useCallback } = React;
 const BackupPage = () => {
     const [backups, setBackups] = useState([]);
     const [loading, setLoading] = useState(false);
+    const fileInputRef = useRef(null);
     const notify = useNotify();
     const dialog = useDialog();
 
@@ -15,6 +16,26 @@ const BackupPage = () => {
 
     useEffect(() => { loadBackups(); }, [loadBackups]);
     
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const confirmed = await dialog.ask("تایید بازگردانی", `آیا از جایگزینی دیتابیس با فایل "${file.name}" اطمینان دارید؟`, "warning");
+        if (confirmed) {
+            setLoading(true);
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const res = await fetch(`${API_URL}/backup/restore_upload`, { method: 'POST', body: formData });
+                const result = await res.json();
+                if (result.success) {
+                    notify.show('موفقیت', 'بازگردانی انجام شد. برنامه مجدد بارگذاری می‌شود.', 'success');
+                    setTimeout(() => window.location.reload(), 2000);
+                } else notify.show('خطا', result.error, 'error');
+            } catch (err) { notify.show('خطا', 'خطای شبکه', 'error'); }
+            finally { setLoading(false); e.target.value = null; }
+        }
+    };
+
     if (typeof useLucide === 'function') {
         useLucide([backups]);
     }
@@ -79,6 +100,8 @@ const BackupPage = () => {
         <div className="flex-1 p-6 overflow-hidden flex flex-col h-full">
             <header className="mb-6 flex justify-between items-center">
                 <div><h2 className="text-2xl font-bold text-white flex items-center gap-3"><i data-lucide="database-backup" className="w-8 h-8 text-nexus-warning"></i>پشتیبان‌گیری و بازیابی</h2><p className="text-gray-400 text-xs mt-1">مدیریت فایل‌های دیتابیس</p></div>
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".db,.bak" className="hidden" />
+                <button onClick={() => fileInputRef.current.click()}disabled={loading}className="bg-white/5 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all duration-300 shadow-lg backdrop-blur-sm group"><i data-lucide="upload" className="w-4 h-4"></i>بازگردانی فایل دستی</button>
                 <button onClick={handleCreateBackup} disabled={loading} className="px-6 py-2 bg-nexus-primary hover:bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-900/20 transition flex items-center gap-2 disabled:opacity-50"><i data-lucide="plus-circle" className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`}></i>{loading ? 'در حال ایجاد...' : 'ایجاد بک‌آپ جدید'}</button>
             </header>
 
