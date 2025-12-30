@@ -1,4 +1,19 @@
-# --- [فایل بهینه‌شده و مدیریت‌شده مسیرهای API سیستم نکسوس] ---
+# =========================================================================
+# نام فایل: routes.py
+# نویسنده: سرگلی
+# نسخه: V0.20
+# * کلیات عملکرد و توابع:
+# این فایل تمام مسیرهای API (Endpoints) سرور Flask را تعریف و مدیریت می‌کند.
+# وظیفه اصلی آن دریافت درخواست‌های کلاینت، پردازش آن‌ها (با کمک دیتابیس) و ارسال پاسخ مناسب است.
+# * بخش‌های کلیدی:
+# 1. System Routes: مسیرهای مربوط به وضعیت سرور، فایل اصلی و خروج.
+# 2. Backup Routes: مدیریت ایجاد، لیست، دانلود و بازگردانی بک‌آپ‌ها.
+# 3. User Management: ورود، ثبت‌نام، ویرایش و حذف کاربران.
+# 4. Settings: مدیریت تنظیمات کلی سیستم و دسته‌بندی‌ها.
+# 5. Inventory Operations: عملیات اصلی انبار (لیست، ذخیره، حذف، خروج).
+# 6. Logs & Stats: گزارش‌گیری، آمار و تاریخچه عملیات.
+# =========================================================================
+
 import os
 import time
 import json
@@ -15,20 +30,42 @@ from services import fetch_daily_usd_price, USD_CACHE
 # متغیر کش برای ذخیره محتوای فایل اصلی رابط کاربری (بهبود سرعت لود)
 GLOBAL_INDEX_CACHE = None
 
+# =========================================================================
+# نام تابع: register_routes
+# کارایی: تابع اصلی برای ثبت تمام مسیرها به اپلیکیشن Flask
+# =========================================================================
 def register_routes(app, server_state):
     
-    # --- ابزارهای کمکی داخلی برای استانداردسازی پاسخ‌ها ---
+    # =========================================================================
+    # بخش ابزارهای کمکی داخلی (INTERNAL HELPERS)
+    # =========================================================================
+
+    # =========================================================================
+    # نام تابع: error_response
+    # کارایی: تولید پاسخ خطای استاندارد JSON
+    # =========================================================================
     def error_response(msg, code=500):
         """تولید پاسخ خطای استاندارد"""
         return jsonify({"success": False, "error": str(msg)}), code
 
+    # =========================================================================
+    # نام تابع: success_response
+    # کارایی: تولید پاسخ موفقیت استاندارد JSON
+    # =========================================================================
     def success_response(data=None):
         """تولید پاسخ موفقیت استاندارد"""
         res = {"success": True}
         if data: res.update(data)
         return jsonify(res)
 
-    # --- مدیریت فایل اصلی (Index) ---
+    # =========================================================================
+    # بخش مسیرهای سیستمی (SYSTEM ROUTES)
+    # =========================================================================
+
+    # =========================================================================
+    # مسیر: /
+    # کارایی: سرو کردن فایل اصلی رابط کاربری (HTML)
+    # =========================================================================
     @app.route('/')
     def serve_index() -> Response:
         global GLOBAL_INDEX_CACHE
@@ -41,7 +78,10 @@ def register_routes(app, server_state):
             return Response(GLOBAL_INDEX_CACHE, mimetype='text/html')
         return "خطا: فایل index.html یافت نشد.", 404
 
-    # --- مدیریت وضعیت اتصال و خروج ---
+    # =========================================================================
+    # مسیر: /api/heartbeat
+    # کارایی: دریافت سیگنال زنده بودن کلاینت برای جلوگیری از بسته شدن سرور
+    # =========================================================================
     @app.route('/api/heartbeat', methods=['POST'])
     def heartbeat() -> Response:
         """بررسی زنده بودن اتصال کلاینت به سرور"""
@@ -49,12 +89,20 @@ def register_routes(app, server_state):
         server_state["shutdown_trigger"] = False
         return jsonify({"status": "alive"})
 
+    # =========================================================================
+    # مسیر: /api/client_closed
+    # کارایی: اعلام بسته شدن مرورگر توسط کاربر
+    # =========================================================================
     @app.route('/api/client_closed', methods=['POST'])
     def client_closed() -> Response:
         """اعلام بسته شدن پنجره توسط کاربر"""
         server_state["shutdown_trigger"] = True
         return jsonify({"status": "closing_soon"})
 
+    # =========================================================================
+    # مسیر: /api/exit_app
+    # کارایی: درخواست خروج کامل و بستن پروسس پایتون
+    # =========================================================================
     @app.route('/api/exit_app', methods=['POST'])
     def exit_app() -> Response:
         """خروج کامل از برنامه و بستن پروسس سرور"""
@@ -64,7 +112,14 @@ def register_routes(app, server_state):
         threading.Thread(target=shutdown).start()
         return jsonify({"status": "exiting"}), 200
 
-    # --- مدیریت پشتیبان‌گیری (Backup) ---
+    # =========================================================================
+    # بخش مدیریت پشتیبان‌گیری (BACKUP MANAGEMENT)
+    # =========================================================================
+
+    # =========================================================================
+    # مسیر: /api/backup/create
+    # کارایی: ایجاد فایل پشتیبان جدید از دیتابیس
+    # =========================================================================
     @app.route('/api/backup/create', methods=['POST'])
     def create_backup():
         """ایجاد یک نسخه پشتیبان از دیتابیس فعلی"""
@@ -87,6 +142,10 @@ def register_routes(app, server_state):
         except Exception as e: 
             return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/backup/download/<filename>
+    # کارایی: دانلود فایل بک‌آپ برای ذخیره روی سیستم کلاینت
+    # =========================================================================
     @app.route('/api/backup/download/<filename>', methods=['GET'])
     def download_backup(filename: str):
         """ارسال فایل بک‌آپ برای دانلود کلاینت"""
@@ -96,6 +155,10 @@ def register_routes(app, server_state):
             return send_file(path, as_attachment=True)
         except Exception as e: return error_response(e)
         
+    # =========================================================================
+    # مسیر: /api/backup/list
+    # کارایی: دریافت لیست تمام فایل‌های پشتیبان موجود
+    # =========================================================================
     @app.route('/api/backup/list', methods=['GET'])
     def list_backups():
         """لیست کردن تمام بک‌آپ‌های موجود بر اساس زمان"""
@@ -123,6 +186,10 @@ def register_routes(app, server_state):
             return jsonify(backups)
         except Exception as e: return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/backup/restore_upload
+    # کارایی: آپلود و جایگزینی دیتابیس توسط فایل کاربر
+    # =========================================================================
     @app.route('/api/backup/restore_upload', methods=['POST'])
     def restore_database_upload():
         """جایگزینی دیتابیس فعلی با فایل ارسالی توسط کاربر"""
@@ -138,6 +205,10 @@ def register_routes(app, server_state):
             return success_response({"message": "دیتابیس با موفقیت بازگردانی شد."})
         except Exception as e: return error_response(f"خطا در جایگزینی فایل: {e}")
     
+    # =========================================================================
+    # مسیر: /api/backup/restore/<filename>
+    # کارایی: بازگردانی دیتابیس از روی یکی از فایل‌های بک‌آپ سرور
+    # =========================================================================
     @app.route('/api/backup/restore/<filename>', methods=['POST'])
     def restore_backup(filename: str):
         """بازگردانی یکی از نسخه‌های بک‌آپ موجود در پوشه سیستم"""
@@ -161,6 +232,10 @@ def register_routes(app, server_state):
                 raise e
         except Exception as e: return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/backup/delete/<filename>
+    # کارایی: حذف فایل بک‌آپ
+    # =========================================================================
     @app.route('/api/backup/delete/<filename>', methods=['DELETE'])
     def delete_backup(filename: str):
         """حذف فیزیکی یک فایل بک‌آپ"""
@@ -171,7 +246,14 @@ def register_routes(app, server_state):
             return success_response()
         except Exception as e: return error_response(e)
 
-    # --- مدیریت کاربران و دسترسی‌ها ---
+    # =========================================================================
+    # بخش مدیریت کاربران و احراز هویت (USER MANAGEMENT)
+    # =========================================================================
+
+    # =========================================================================
+    # مسیر: /api/login
+    # کارایی: بررسی نام کاربری و رمز عبور برای ورود
+    # =========================================================================
     @app.route('/api/login', methods=['POST'])
     def login():
         """ورود کاربر به سیستم"""
@@ -193,6 +275,10 @@ def register_routes(app, server_state):
                 return jsonify({"success": False, "message": "نام کاربری یا رمز عبور اشتباه است"}), 401
         except Exception as e: return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/users
+    # کارایی: دریافت لیست کاربران
+    # =========================================================================
     @app.route('/api/users', methods=['GET'])
     def get_users():
         """دریافت لیست تمام کاربران"""
@@ -205,6 +291,10 @@ def register_routes(app, server_state):
                 result.append(d)
             return jsonify(result)
 
+    # =========================================================================
+    # مسیر: /api/users/save
+    # کارایی: ایجاد یا ویرایش کاربر
+    # =========================================================================
     @app.route('/api/users/save', methods=['POST'])
     def save_user():
         """ایجاد یا ویرایش اطلاعات کاربر"""
@@ -237,6 +327,10 @@ def register_routes(app, server_state):
         except sqlite3.IntegrityError: return error_response("نام کاربری تکراری است", 400)
         except Exception as e: return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/users/delete/<id>
+    # کارایی: حذف کاربر
+    # =========================================================================
     @app.route('/api/users/delete/<int:id>', methods=['DELETE'])
     def delete_user(id: int):
         """حذف کاربر (جلوگیری از حذف ادمین اصلی)"""
@@ -248,6 +342,10 @@ def register_routes(app, server_state):
             conn.commit()
             return success_response()
 
+    # =========================================================================
+    # مسیر: /api/user/change_password
+    # کارایی: تغییر رمز عبور کاربر جاری
+    # =========================================================================
     @app.route('/api/user/change_password', methods=['POST'])
     def change_password_api():
         """تغییر رمز عبور توسط خود کاربر"""
@@ -265,7 +363,14 @@ def register_routes(app, server_state):
             return success_response()
         except Exception as e: return error_response(e)
 
-    # --- مدیریت تنظیمات سیستم ---
+    # =========================================================================
+    # بخش مدیریت تنظیمات (SETTINGS MANAGEMENT)
+    # =========================================================================
+
+    # =========================================================================
+    # مسیر: /api/settings/config [GET]
+    # کارایی: دریافت تنظیمات کلی سیستم
+    # =========================================================================
     @app.route('/api/settings/config', methods=['GET'])
     def get_config():
         """دریافت تنظیمات دسته‌بندی‌ها و پارامترهای قطعات"""
@@ -279,6 +384,10 @@ def register_routes(app, server_state):
                 return jsonify(stored)
             return jsonify(DEFAULT_COMPONENT_CONFIG)
 
+    # =========================================================================
+    # مسیر: /api/settings/config [POST]
+    # کارایی: ذخیره تنظیمات سیستم
+    # =========================================================================
     @app.route('/api/settings/config', methods=['POST'])
     def save_config():
         """ذخیره تنظیمات و به‌روزرسانی خودکار کدهای انبار در صورت تغییر پیشوند"""
@@ -303,6 +412,10 @@ def register_routes(app, server_state):
             return success_response()
         except Exception as e: return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/settings/rename
+    # کارایی: تغییر نام دسته‌بندی‌ها یا آیتم‌ها در تمام سیستم
+    # =========================================================================
     @app.route('/api/settings/rename', methods=['POST'])
     def rename_item_api():
         """تغییر نام دسته‌ها یا آیتم‌های داخل لیست‌ها در تنظیمات و دیتابیس"""
@@ -340,7 +453,14 @@ def register_routes(app, server_state):
             return success_response()
         except Exception as e: return error_response(e)
 
-    # --- مدیریت قطعات (Inventory Management) ---
+    # =========================================================================
+    # بخش عملیات انبار (INVENTORY OPERATIONS)
+    # =========================================================================
+
+    # =========================================================================
+    # مسیر: /api/parts
+    # کارایی: دریافت لیست قطعات انبار
+    # =========================================================================
     @app.route('/api/parts', methods=['GET'])
     def get_parts():
         """دریافت تمام قطعات موجود در انبار"""
@@ -348,6 +468,10 @@ def register_routes(app, server_state):
             parts = conn.execute('SELECT * FROM parts ORDER BY id DESC').fetchall()
             return jsonify([dict(p) for p in parts])
 
+    # =========================================================================
+    # مسیر: /api/save
+    # کارایی: ثبت قطعه جدید یا ویرایش قطعه موجود
+    # =========================================================================
     @app.route('/api/save', methods=['POST'])
     def save_part():
         """ذخیره قطعه جدید یا ویرایش قطعه قدیمی (با مدیریت ادغام و ثبت لاگ تغییرات)"""
@@ -453,6 +577,10 @@ def register_routes(app, server_state):
             return success_response()
         except Exception as e: return error_response(e)
         
+    # =========================================================================
+    # مسیر: /api/withdraw
+    # کارایی: خروج (برداشت) قطعات از انبار
+    # =========================================================================
     @app.route('/api/withdraw', methods=['POST'])
     def withdraw_parts():
         """خروج قطعات از انبار برای یک پروژه خاص"""
@@ -482,6 +610,10 @@ def register_routes(app, server_state):
             return success_response()
         except Exception as e: return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/delete/<id>
+    # کارایی: حذف کامل قطعه از انبار
+    # =========================================================================
     @app.route('/api/delete/<int:id>', methods=['DELETE'])
     def delete_part(id: int):
         """حذف قطعه از انبار و ثبت لاگ حذف"""
@@ -495,7 +627,14 @@ def register_routes(app, server_state):
             conn.commit()
             return success_response()
 
-    # --- مدیریت مخاطبین ---
+    # =========================================================================
+    # بخش مدیریت مخاطبین (CONTACTS MANAGEMENT)
+    # =========================================================================
+
+    # =========================================================================
+    # مسیر: /api/contacts
+    # کارایی: دریافت لیست مخاطبین
+    # =========================================================================
     @app.route('/api/contacts', methods=['GET'])
     def get_contacts():
         """دریافت لیست مخاطبین و فروشندگان"""
@@ -503,6 +642,10 @@ def register_routes(app, server_state):
             rows = conn.execute('SELECT * FROM contacts ORDER BY name ASC').fetchall()
             return jsonify([dict(r) for r in rows])
 
+    # =========================================================================
+    # مسیر: /api/contacts/save
+    # کارایی: ذخیره یا ویرایش مخاطب
+    # =========================================================================
     @app.route('/api/contacts/save', methods=['POST'])
     def save_contact():
         """ذخیره یا ویرایش مخاطب"""
@@ -522,6 +665,10 @@ def register_routes(app, server_state):
             return success_response()
         except Exception as e: return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/contacts/delete/<id>
+    # کارایی: حذف مخاطب
+    # =========================================================================
     @app.route('/api/contacts/delete/<int:id>', methods=['DELETE'])
     def delete_contact(id: int):
         """حذف مخاطب"""
@@ -530,7 +677,14 @@ def register_routes(app, server_state):
             conn.commit()
         return success_response()
 
-    # --- لاگ‌ها و آمار سیستم ---
+    # =========================================================================
+    # بخش لاگ‌ها و آمار (LOGS AND STATISTICS)
+    # =========================================================================
+
+    # =========================================================================
+    # مسیر: /api/log
+    # کارایی: دریافت تاریخچه عملیات
+    # =========================================================================
     @app.route('/api/log', methods=['GET'])
     def get_log():
         """دریافت لیست تمام عملیات‌های انجام شده (لاگ‌ها)"""
@@ -538,6 +692,10 @@ def register_routes(app, server_state):
             rows = conn.execute('SELECT * FROM purchase_log ORDER BY timestamp DESC').fetchall()
             return jsonify([dict(r) for r in rows])
 
+    # =========================================================================
+    # مسیر: /api/inventory/stats
+    # کارایی: دریافت آمار تجمیعی انبار و کسری‌ها
+    # =========================================================================
     @app.route('/api/inventory/stats', methods=['GET'])
     def get_inventory_stats():
         """دریافت آمار کلی انبار، ارزش ریالی/دلاری و لیست کسری‌ها"""
@@ -584,7 +742,10 @@ def register_routes(app, server_state):
                 })   
         except Exception as e: return error_response(e)
 
-    # --- مدیریت هوشمند لاگ‌های خرید و فروش (Undo/Edit) ---
+    # =========================================================================
+    # مسیر: /api/log/delete/<id>
+    # کارایی: حذف یک لاگ و واگردانی تغییرات موجودی
+    # =========================================================================
     @app.route('/api/log/delete/<int:log_id>', methods=['DELETE'])
     def delete_log_entry(log_id: int) -> Response:
         """حذف یک لاگ و واگردانی اثر آن بر موجودی انبار"""
@@ -600,6 +761,10 @@ def register_routes(app, server_state):
             return success_response()
         except Exception as e: return error_response(e)
 
+    # =========================================================================
+    # مسیر: /api/log/update
+    # کارایی: ویرایش یک لاگ و اصلاح موجودی
+    # =========================================================================
     @app.route('/api/log/update', methods=['POST'])
     def update_log_entry() -> Response:
         """ویرایش یک لاگ (تغییر تعداد یا دلیل) و به‌روزرسانی موجودی انبار بر اساس تفاضل"""

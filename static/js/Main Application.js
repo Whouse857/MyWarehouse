@@ -1,11 +1,33 @@
-// [TAG: MAIN_APP]
-// طراحی بصری اختصاصی H&Y با منطق دقیق فایل مرجع
-// اصلاح شده: استفاده از لوگو در پس‌زمینه و افزایش غلظت پنل‌های شیشه‌ای
-// تغییر جدید: عدم نمایش گزینه تغییر گذرواژه برای ادمین در منوی پروفایل
+/**
+ * نام فایل: Main Application.js
+ * نویسنده: سرگلی (بازنویسی شده بر اساس درخواست)
+ * نسخه: V0.20
+ * * کلیات عملکرد و توابع:
+ * این فایل نقطه ورود اصلی (Main Entry Point) برنامه React است.
+ * وظیفه مدیریت وضعیت کلی برنامه (State)، احراز هویت (Login)، مسیریابی داخلی (Tabs)،
+ * و هماهنگی بین تمام ماژول‌ها و صفحات دیگر را بر عهده دارد.
+ * * توابع و بخش‌های کلیدی:
+ * 1. AppBackground: کامپوننت پس‌زمینه گرافیکی و انیمیشنی برنامه.
+ * 2. NexusToast: سیستم نمایش اعلان‌های (Notification) سراسری.
+ * 3. LoginPage: فرم ورود به سیستم با احراز هویت امن.
+ * 4. ChangePasswordModal: مودال تغییر رمز عبور کاربر.
+ * 5. App (Main Component): کامپوننت اصلی که شامل سایدبار، هدر و ناحیه محتواست.
+ * 6. hasPerm: تابع بررسی دسترسی کاربر به ماژول‌های مختلف.
+ * 7. performExit / performBackupAndExit: مدیریت خروج ایمن از برنامه.
+ */
 
 const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-// --- سیستم پس‌زمینه مهندسی H&Y ---
+// =========================================================================
+// بخش کامپوننت‌های بصری پایه (BASE UI COMPONENTS)
+// =========================================================================
+
+// =========================================================================
+/**
+ * نام کامپوننت: AppBackground
+ * کارایی: ایجاد پس‌زمینه گرافیکی متحرک با افکت‌های نوری و لوگوی محو
+ */
+// =========================================================================
 const AppBackground = () => (
   <div className="fixed inset-0 -z-20 overflow-hidden bg-[#01040f]">
     {/* لایه‌های نوری متحرک */}
@@ -29,7 +51,12 @@ const AppBackground = () => (
   </div>
 );
 
-// --- کامپوننت اعلان (Toast) متمرکز و هوشمند ---
+// =========================================================================
+/**
+ * نام کامپوننت: NexusToast
+ * کارایی: نمایش اعلان‌های سیستم (موفقیت/خطا) به صورت پاپ‌آپ زیبا
+ */
+// =========================================================================
 const NexusToast = ({ isOpen, onClose, title, message, type }) => {
   useEffect(() => { if (isOpen && window.lucide) window.lucide.createIcons(); }, [isOpen]);
   if (!isOpen) return null;
@@ -54,7 +81,7 @@ const NexusToast = ({ isOpen, onClose, title, message, type }) => {
         <button onClick={onClose} className="mt-4 w-full py-3 rounded-2xl bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold transition-all shadow-lg text-sm active:scale-95">متوجه شدم</button>
       ) : (
         <button onClick={onClose} className="absolute top-4 right-4 p-1.5 text-gray-500 hover:text-white transition-colors">
-          <i data-lucide="x" className="w-4 h-4"></i>
+          <i data-lucide={isErr ? "x" : "x"} className="w-4 h-4"></i>
         </button>
       )}
     </div>
@@ -67,7 +94,16 @@ const NexusToast = ({ isOpen, onClose, title, message, type }) => {
   );
 };
 
-// --- صفحه ورود (Login Page) اختصاصی H&Y ---
+// =========================================================================
+// بخش احراز هویت و امنیت (AUTHENTICATION)
+// =========================================================================
+
+// =========================================================================
+/**
+ * نام کامپوننت: LoginPage
+ * کارایی: صفحه ورود کاربران با فرمت گرافیکی اختصاصی H&Y
+ */
+// =========================================================================
 const LoginPage = ({ onLogin }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -124,7 +160,12 @@ const LoginPage = ({ onLogin }) => {
   );
 };
 
-// --- Change Password Modal ---
+// =========================================================================
+/**
+ * نام کامپوننت: ChangePasswordModal
+ * کارایی: پنجره پاپ‌آپ برای تغییر رمز عبور کاربر جاری
+ */
+// =========================================================================
 const ChangePasswordModal = ({ isOpen, onClose, username, notify }) => {
   const [d, setD] = useState({ old: '', new: '', confirm: '' });
   const [loading, setLoading] = useState(false);
@@ -166,8 +207,14 @@ const ChangePasswordModal = ({ isOpen, onClose, username, notify }) => {
   );
 };
 
-// --- App Component (منطق فایل مرجع + تم H&Y) ---
+// =========================================================================
+// کامپوننت اصلی برنامه (ROOT APPLICATION)
+// =========================================================================
+
 const App = () => {
+  // =========================================================================
+  // بخش منطق و وضعیت‌های اصلی (CORE LOGIC & STATE)
+  // =========================================================================
   const [notifyState, setNotifyState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [dialogConfig, setDialogConfig] = useState({ isOpen: false, title: "", message: "", type: "danger", resolve: null });
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -183,12 +230,24 @@ const App = () => {
   const toastTimerRef = useRef(null);
   const userMenuRef = useRef(null);
 
+  // =========================================================================
+  /**
+   * نام هوک: useEffect (Outside Click)
+   * کارایی: بستن منوی کاربری هنگام کلیک در خارج از ناحیه منو
+   */
+  // =========================================================================
   useEffect(() => {
     const handleOutside = (e) => { if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false); };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
+  // =========================================================================
+  /**
+   * نام تابع: showNotify
+   * کارایی: نمایش اعلان سراسری و مدیریت تایمر بسته شدن خودکار
+   */
+  // =========================================================================
   const showNotify = useCallback((title, message, type = 'success') => { 
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setNotifyState({ isOpen: true, title, message, type }); 
@@ -198,10 +257,23 @@ const App = () => {
   }, []);
 
   const notifyValue = useMemo(() => ({ show: showNotify }), [showNotify]);
+  
+  // =========================================================================
+  /**
+   * نام تابع: ask
+   * کارایی: نمایش دیالوگ تاییدیه و بازگرداندن Promise برای دریافت نتیجه کاربر
+   */
+  // =========================================================================
   const ask = useCallback((title, message, type="danger") => new Promise((resolve) => setDialogConfig({ isOpen: true, title, message, type, resolve })), []);
   const dialogValue = useMemo(() => ({ ask }), [ask]);
   const closeDialog = (result) => { if (dialogConfig.resolve) dialogConfig.resolve(result); setDialogConfig(prev => ({ ...prev, isOpen: false, resolve: null })); };
 
+  // =========================================================================
+  /**
+   * نام تابع: hasPerm
+   * کارایی: بررسی دسترسی کاربر فعلی به یک بخش خاص از سیستم
+   */
+  // =========================================================================
   const hasPerm = useCallback((key) => {
     if (!user) return false;
     if (user.role === 'admin' || user.username === 'admin') return true;
@@ -209,15 +281,27 @@ const App = () => {
     return !!user.permissions[key];
   }, [user]);
 
+  // =========================================================================
+  // هوک‌های جانبی (Side Effects: Time, Server Status, Config)
+  // =========================================================================
   useEffect(() => { const t = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(t); }, []);
+  
   useEffect(() => { 
     const check = () => fetchAPI('/heartbeat', { method: 'POST' }).then(() => setServerStatus(true)).catch(() => setServerStatus(false));
     check(); const i = setInterval(check, 5000); return () => clearInterval(i); 
   }, []);
+  
   useEffect(() => { fetchAPI('/settings/config').then(({ok, data}) => { if(ok) setGlobalConfig(data); }); }, []);
+  
   useEffect(() => { const h = () => fetch(`${API_URL}/client_closed`, { method: 'POST', keepalive: true, body: JSON.stringify({ reason: 'unload' }) }); window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h); }, []);
+  
   useEffect(() => { setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50); }, [activeTab, user, userMenuOpen]);
 
+  // =========================================================================
+  /**
+   * توابع مدیریت خروج و نشست (Session Management)
+   */
+  // =========================================================================
   const handleExitRequest = () => { setUserMenuOpen(false); setShowExitConfirm(true); };
   const performExit = () => fetchAPI('/exit_app', { method: 'POST' }).finally(() => window.close());
   
@@ -232,6 +316,10 @@ const App = () => {
   };
 
   const handleLogout = () => { setUserMenuOpen(false); setUser(null); setActiveTab('dashboard'); };
+
+  // =========================================================================
+  // بخش نمایش و رندرینگ (VIEW / UI)
+  // =========================================================================
 
   if (!user) return (
     <NotificationContext.Provider value={notifyValue}>

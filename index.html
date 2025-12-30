@@ -1,38 +1,53 @@
-<!DOCTYPE html>
-<!-- 
-    [TAG: DOCUMENT_HEAD]
-    H&Y Warehouse System
-    نسخه اصلاح شده: پایداری رندر و مدیریت لوگوی محلی + ساختار ماژولار ادمین
+<!--
+ * نام فایل: index.html
+ * نویسنده: سرگلی
+ * نسخه: V0.20
+ * * کلیات عملکرد:
+ * این فایل، صفحه اصلی (Single Page Application) و نقطه ورود رابط کاربری است.
+ * وظیفه آن بارگذاری کتابخانه‌های پایه (React, Tailwind, ...)، استایل‌های جهانی،
+ * و فراخوانی اسکریپت‌های ماژولار برنامه می‌باشد.
+ * * بخش‌های کلیدی:
+ * 1. Head: تنظیمات متا، عنوان و لود کتابخانه‌های جاوااسکریپت و استایل‌ها.
+ * 2. Styles: تعریف فونت وزیرمتن و استایل‌های پایه Tailwind.
+ * 3. Body: نگهدارنده اصلی برنامه (#root) و محل تزریق اسکریپت‌های کامپوننت‌ها.
 -->
+
+<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
+    <!-- ========================================================================= -->
+    <!-- بخش تنظیمات هد و کتابخانه‌ها (HEAD & LIBRARIES) -->
+    <!-- ========================================================================= -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- استفاده از کد استاندارد برای کاراکتر & در تایتل -->
     <title>H&amp;Y - سیستم انبارداری</title>
     
-    <!-- کتابخانه‌های خارجی 
+    <!-- 
+    کتابخانه‌های آنلاین (جهت توسعه یا جایگزینی در صورت نیاز)
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" />
--->   
-<!-- کتابخانه‌های آفلاین -->
+    -->
+
+    <!-- کتابخانه‌های آفلاین (محلی) -->
     <script src="/static/libs/react.production.min.js"></script>
     <script src="/static/libs/react-dom.production.min.js"></script>
     <script src="/static/libs/babel.min.js"></script>
     <script src="/static/libs/tailwind.js"></script>
     <script src="/static/libs/lucide.min.js"></script>
     
-    <!-- این ۳ مورد برای اجرای منطق برنامه‌ات ضروری هستند -->
+    <!-- کتابخانه‌های جانبی (اجرای منطق برنامه) -->
     <script src="/static/libs/framer-motion.js"></script>
     <script src="/static/libs/axios.min.js"></script>
     <script src="/static/libs/sweetalert2.all.min.js"></script>
 
-
-
+    <!-- ========================================================================= -->
+    <!-- بخش تنظیمات و استایل‌ها (CONFIG & STYLES) -->
+    <!-- ========================================================================= -->
     <script>
         tailwind.config = {
             theme: {
@@ -96,9 +111,16 @@
 
 </head>
 <body>
+    <!-- ========================================================================= -->
+    <!-- بدنه اصلی برنامه (MAIN BODY) -->
+    <!-- ========================================================================= -->
     <div id="root"></div>
     
-    <!-- لود اسکریپت‌ها با دقت در نام‌گذاری -->
+    <!-- ========================================================================= -->
+    <!-- بارگذاری اسکریپت‌های ماژولار (MODULE LOADING) -->
+    <!-- ========================================================================= -->
+    
+    <!-- لود اسکریپت‌ها با دقت در نام‌گذاری و ترتیب اجرا -->
     <script type="text/babel" src="/static/js/Core%20Logic%26Utils.js"></script>
     <script type="text/babel" src="/static/js/UI%20Components.js"></script>
     <script type="text/babel" src="/static/js/Dashboard%20Page.js"></script>
@@ -106,16 +128,18 @@
     <script type="text/babel" src="/static/js/Withdraw%20Page.js"></script>
     <script type="text/babel" src="/static/js/inventory.js"></script>
     
-    <!-- بخش جدید مدیریت سیستم (ماژولار شده) -->
+    <!-- بخش مدیریت سیستم (ماژولار شده) -->
     <script type="text/babel" src="/static/js/admin_users.js"></script>
     <script type="text/babel" src="/static/js/admin_management.js"></script>
     <script type="text/babel" src="/static/js/admin_backup.js"></script>
     <script type="text/babel" src="/static/js/admin_main.js"></script>
     
+    <!-- صفحات جانبی و برنامه اصلی -->
     <script type="text/babel" src="/static/js/Extra%20Pages.js"></script>
     <script type="text/babel" src="/static/js/Main%20Application.js"></script>
 
-<script type="text/babel">
+    <!-- فعال‌سازی اولیه آیکون‌ها -->
+    <script type="text/babel">
         window.addEventListener('load', () => {
             if (window.lucide) {
                 lucide.createIcons();

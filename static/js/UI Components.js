@@ -1,12 +1,41 @@
-// [TAG: UI_COMPONENTS]
-// کامپوننت‌های رابط کاربری عمومی (Modal, Input, Select, etc)
+/**
+ * نام فایل: UI Components.js
+ * نویسنده: سرگلی
+ * نسخه: V0.20
+ * * کلیات عملکرد و توابع:
+ * این فایل کتابخانه‌ای از کامپوننت‌های رابط کاربری (UI) قابل استفاده مجدد در کل پروژه است.
+ * هدف آن ایجاد یکپارچگی بصری و کاهش تکرار کد در طراحی صفحات مختلف می‌باشد.
+ * * کامپوننت‌های کلیدی:
+ * 1. ModalOverlay: لایه پس‌زمینه تار برای تمام مودال‌ها.
+ * 2. ConfirmDialog: دیالوگ استاندارد تایید عملیات (با رنگ‌بندی‌های مختلف: خطر، هشدار، موفقیت).
+ * 3. NotificationModal: مودال ساده برای نمایش پیام‌ها.
+ * 4. ExitDialog: دیالوگ اختصاصی برای خروج از برنامه با گزینه پشتیبان‌گیری.
+ * 5. InputModal: مودال ساده دارای یک فیلد ورودی (مثلاً برای تغییر نام).
+ * 6. NexusInput / NexusSelect: ورودی‌ها و لیست‌های کشویی با استایل اختصاصی نکسوس (Memoized).
+ */
 
+// =========================================================================
+// کامپوننت‌های پایه (BASE COMPONENTS)
+// =========================================================================
+
+// =========================================================================
+/**
+ * نام کامپوننت: ModalOverlay
+ * کارایی: ایجاد لایه پس‌زمینه (Backdrop) تار و تیره برای تمرکز روی مودال‌ها
+ */
+// =========================================================================
 const ModalOverlay = ({ children, onClick }) => (
  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in" onClick={onClick}>
  {children}
  </div>
 );
 
+// =========================================================================
+/**
+ * نام کامپوننت: ConfirmDialog
+ * کارایی: دیالوگ تایید عملیات با قابلیت تنظیم نوع (خطر، هشدار، اطلاع‌رسانی، موفقیت)
+ */
+// =========================================================================
 const ConfirmDialog = ({ isOpen, title, message, type = 'danger', onConfirm, onCancel }) => {
  if (!isOpen) return null;
  const config = {
@@ -35,6 +64,12 @@ const ConfirmDialog = ({ isOpen, title, message, type = 'danger', onConfirm, onC
  );
 };
 
+// =========================================================================
+/**
+ * نام کامپوننت: NotificationModal
+ * کارایی: مودال ساده برای نمایش پیام‌های سیستم به کاربر (فقط دکمه تایید دارد)
+ */
+// =========================================================================
 const NotificationModal = ({ isOpen, onClose, title, message, type }) => {
  if (!isOpen) return null;
  const config = type === 'error' 
@@ -57,6 +92,12 @@ return (
  );
 };
 
+// =========================================================================
+/**
+ * نام کامپوننت: ExitDialog
+ * کارایی: دیالوگ خروج از برنامه با امکان انتخاب "بک‌آپ و خروج" یا "فقط خروج"
+ */
+// =========================================================================
 const ExitDialog = ({ isOpen, onClose, onConfirm, onBackupAndExit, title, message, loading }) => {
     if (!isOpen) return null;
     return (
@@ -96,6 +137,12 @@ const ExitDialog = ({ isOpen, onClose, onConfirm, onBackupAndExit, title, messag
     );
 };
 
+// =========================================================================
+/**
+ * نام کامپوننت: InputModal
+ * کارایی: مودال دریافت یک ورودی متنی از کاربر (مثلاً برای تغییر نام آیتم)
+ */
+// =========================================================================
 const InputModal = ({ isOpen, onClose, onConfirm, title, label, initialValue = "" }) => {
  const [value, setValue] = useState(initialValue);
  useEffect(() => { if (isOpen) setValue(initialValue); }, [isOpen, initialValue]);
@@ -117,14 +164,26 @@ const InputModal = ({ isOpen, onClose, onConfirm, title, label, initialValue = "
  );
 };
 
-const NexusInput = memo(({ label, value, onChange, placeholder, dir="ltr", type="text", className="", list, disabled, onKeyPress, error }) => (
+// =========================================================================
+/**
+ * نام کامپوننت: NexusInput
+ * کارایی: فیلد ورودی متنی (Input) با استایل اختصاصی و قابلیت نمایش خطا
+ */
+// =========================================================================
+const NexusInput = React.memo(({ label, value, onChange, placeholder, dir="ltr", type="text", className="", list, disabled, onKeyPress, error }) => (
  <div className={`flex flex-col ${className}`}>
  {label && <label className={`text-xs mb-1 block font-medium ${error ? 'text-red-400' : 'text-gray-400'}`}>{label}</label>}
  <input type={type} value={value === null || value === undefined ? "" : value} onChange={onChange} onKeyPress={onKeyPress} dir={dir} placeholder={placeholder} list={list} disabled={disabled} className={`nexus-input w-full px-3 py-2 text-sm placeholder-gray-500 ${error ? '!border-red-500 focus:!border-red-500 !bg-red-500/10 placeholder-red-300/50' : ''}`} />
  </div>
 ));
 
-const NexusSelect = memo(({ label, options, value, onChange, className="", disabled, error }) => (
+// =========================================================================
+/**
+ * نام کامپوننت: NexusSelect
+ * کارایی: لیست کشویی (Select) با استایل اختصاصی و آیکون سفارشی
+ */
+// =========================================================================
+const NexusSelect = React.memo(({ label, options, value, onChange, className="", disabled, error }) => (
  <div className={`flex flex-col ${className}`}>
  <label className={`text-xs mb-1 block font-medium ${error ? 'text-red-400' : 'text-gray-400'}`}>{label}</label>
  <div className="relative">
@@ -137,7 +196,9 @@ const NexusSelect = memo(({ label, options, value, onChange, className="", disab
  </div>
 ));
 
-// Export globally
+// =========================================================================
+// اکسپورت‌های سراسری (GLOBAL EXPORTS)
+// =========================================================================
 window.ModalOverlay = ModalOverlay;
 window.ConfirmDialog = ConfirmDialog;
 window.NotificationModal = NotificationModal;

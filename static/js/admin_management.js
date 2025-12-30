@@ -1,10 +1,29 @@
-// [TAG: MODULE_ADMIN_MANAGEMENT]
-// ماژول تنظیمات و مدیریت لیست‌ها - تفکیک شده از Admin Pages.js
-// نسخه اصلاح شده: اضافه شدن فیلد پیشوند 3 کاراکتری برای کدینگ قطعات
+/**
+ * نام فایل: admin_management.js
+ * نویسنده: سرگلی
+ * نسخه: V0.20
+ * * کلیات عملکرد و توابع:
+ * این ماژول وظیفه مدیریت تنظیمات سیستم، لیست‌های پایه (مانند واحدها، پکیج‌ها)،
+ * و پیکربندی دسته‌بندی‌های مختلف قطعات را بر عهده دارد.
+ * * توابع کلیدی:
+ * 1. handleDragStart/Enter/End: مدیریت عملیات Drag & Drop برای تغییر اولویت نمایش دسته‌ها.
+ * 2. handleFieldConfigChange: تنظیم ویژگی‌های فیلدها (مانند الزامی بودن یا نمایش/عدم نمایش).
+ * 3. handleAddItem: افزودن یک آیتم جدید به لیست‌های فرعی (مثل لیست برندها یا واحدها).
+ * 4. handleDeleteItem: حذف یک آیتم از لیست‌های فرعی.
+ * 5. handleSave: ارسال کل پیکربندی (Config) تغییر یافته به سرور جهت ذخیره‌سازی.
+ * 6. handleDeleteCategory: حذف کامل یک دسته‌بندی (به جز دسته‌بندی عمومی).
+ * 7. handleRenameSubmit: مدیریت تغییر نام دسته‌بندی‌ها یا آیتم‌های داخل لیست‌ها.
+ * 8. handleAddCategorySubmit: ایجاد یک دسته‌بندی جدید با تنظیمات پیش‌فرض.
+ * 9. handlePrefixChange: تغییر پیشوند ۳ حرفی کدینگ برای دسته‌بندی انتخاب شده.
+ */
 
 const { useState, useEffect, useRef } = React;
 
 const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
+    // =========================================================================
+    // بخش منطق و توابع (LOGIC & FUNCTIONS)
+    // =========================================================================
+
     const [sortedKeys, setSortedKeys] = useState([]);
     const [selectedType, setSelectedType] = useState(null);
     const [config, setConfig] = useState(globalConfig || {});
@@ -31,6 +50,12 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         useLucide([selectedType, config, sortedKeys]);
     }
 
+    // =========================================================================
+    /**
+     * گروه توابع: Drag & Drop
+     * کارایی: مدیریت جابجایی دسته‌بندی‌ها برای تعیین اولویت نمایش
+     */
+    // =========================================================================
     const handleDragStart = (e, position) => { dragItem.current = position; e.target.classList.add('opacity-50'); };
     const handleDragEnter = (e, position) => { dragOverItem.current = position; const copyListItems = [...sortedKeys]; const dragItemContent = copyListItems[dragItem.current]; copyListItems.splice(dragItem.current, 1); copyListItems.splice(dragOverItem.current, 0, dragItemContent); dragItem.current = position; setSortedKeys(copyListItems); };
     const handleDragEnd = (e) => { e.target.classList.remove('opacity-50'); dragItem.current = null; dragOverItem.current = null; const newConfig = { ...config }; sortedKeys.forEach((key, index) => { if (newConfig[key]) newConfig[key].priority = sortedKeys.length - index; }); setConfig(newConfig); };
@@ -50,44 +75,35 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         'locations': { label: 'آدرس‌های انبار (General)', icon: 'map-pin' }
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleFieldConfigChange
+     * کارایی: تغییر تنظیمات یک فیلد خاص (نمایش/مخفی، الزامی/اختیاری، نام فیلد)
+     */
+    // =========================================================================
     const handleFieldConfigChange = (listName, key, value) => {
-        // --- شروع بخش جدید: بررسی وجود آیتم در لیست ---
-        // اگر کاربر می‌خواهد فیلد را "نمایش" دهد یا آن را "الزامی" کند
         if ((key === 'visible' && value === true) || (key === 'required' && value === true)) {
             const currentList = config[selectedType][listName] || [];
             if (currentList.length === 0) {
-                // نمایش پیام خطا به کاربر و توقف عملیات
-                notify.show(
-                    'لیست خالی است', 
-                    `ابتدا باید حداقل یک آیتم برای این فیلد تعریف کنید تا بتوانید آن را فعال یا الزامی نمایید.`, 
-                    'error'
-                );
-                return; // اجازه تغییر وضعیت داده نمی‌شود
+                notify.show('لیست خالی است', `ابتدا باید حداقل یک آیتم برای این فیلد تعریف کنید تا بتوانید آن را فعال یا الزامی نمایید.`, 'error');
+                return;
             }
         }
-        // --- پایان بخش جدید ---
-
         const newConfig = { ...config };
-        
-        // اطمینان از وجود ساختار ذخیره‌سازی
         if (!newConfig[selectedType].fields) newConfig[selectedType].fields = {};
         if (!newConfig[selectedType].fields[listName]) newConfig[selectedType].fields[listName] = {};
-        
-        // اعمال تغییر مورد نظر کاربر
         newConfig[selectedType].fields[listName][key] = value;
-
-        // منطق هوشمند: ارتباط الزامی بودن و نمایش
-        if (key === 'required' && value === true) {
-             newConfig[selectedType].fields[listName]['visible'] = true;
-        }
-        
-        if (key === 'visible' && value === false) {
-             newConfig[selectedType].fields[listName]['required'] = false;
-        }
-
+        if (key === 'required' && value === true) newConfig[selectedType].fields[listName]['visible'] = true;
+        if (key === 'visible' && value === false) newConfig[selectedType].fields[listName]['required'] = false;
         setConfig(newConfig);
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleAddItem
+     * کارایی: افزودن یک مقدار جدید به لیست‌های فرعی (مانند اضافه کردن یک واحد جدید)
+     */
+    // =========================================================================
     const handleAddItem = (listName, value) => {
         if (!value || !value.trim()) return;
         const newConfig = { ...config };
@@ -95,14 +111,32 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         if (!newConfig[selectedType][listName].includes(value)) { newConfig[selectedType][listName].push(value); setConfig(newConfig); setNewItems({ ...newItems, [listName]: '' }); }
     };
     
+    // =========================================================================
+    /**
+     * نام تابع: handleDeleteItem
+     * کارایی: حذف یک مقدار از لیست‌های فرعی
+     */
+    // =========================================================================
     const handleDeleteItem = (listName, value) => { const newConfig = { ...config }; newConfig[selectedType][listName] = newConfig[selectedType][listName].filter(item => item !== value); setConfig(newConfig); };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleSave
+     * کارایی: ذخیره نهایی تمام تغییرات اعمال شده در تنظیمات روی سرور
+     */
+    // =========================================================================
     const handleSave = async () => {
         if (await dialog.ask("ذخیره تنظیمات", "آیا از ذخیره تغییرات اطمینان دارید؟", "warning")) {
             try { const { ok } = await fetchAPI('/settings/config', { method: 'POST', body: config }); if (ok) { onConfigUpdate(config); notify.show('موفقیت', "تنظیمات ذخیره شد.", 'success'); } } catch (e) { notify.show('خطا', "مشکل شبکه", 'error'); }
         }
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleDeleteCategory
+     * کارایی: حذف کامل یک دسته‌بندی قطعه (Category)
+     */
+    // =========================================================================
     const handleDeleteCategory = async (keyToDelete) => {
         if (keyToDelete === 'General') return notify.show('خطا', 'حذف تنظیمات عمومی مجاز نیست.', 'error');
         if (await dialog.ask("حذف دسته", `آیا از حذف دسته‌بندی "${config[keyToDelete].label}" اطمینان دارید؟`, "danger")) {
@@ -114,6 +148,12 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         }
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleRenameSubmit
+     * کارایی: نهایی کردن تغییر نام (برای دسته‌بندی‌ها یا آیتم‌ها) و ارسال به سرور
+     */
+    // =========================================================================
     const handleRenameSubmit = async (newVal) => {
         if (!newVal || newVal === renameModal.oldVal) return setRenameModal({ ...renameModal, open: false });
         try {
@@ -135,17 +175,20 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         setRenameModal({ ...renameModal, open: false });
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleAddCategorySubmit
+     * کارایی: ایجاد یک دسته‌بندی جدید با مقادیر پیش‌فرض
+     */
+    // =========================================================================
     const handleAddCategorySubmit = async (newVal) => {
-        
         if (!newVal || config[newVal]) return setAddCategoryModal(false);
         const newConfig = { ...config, 
             [newVal]: { 
             label: newVal, icon: 'box', 
             tolerances: [],
             units: [], packages: [], techs: [], paramOptions: [], 
-            // --- این خط را اضافه کنید ---
             list5: [], list6: [], list7: [], list8: [], list9: [], list10: [],
-            // ---------------------------
             paramLabel: 'Parameter', priority: 0, prefix: 'PRT' 
         }};
         try { const { ok } = await fetchAPI('/settings/config', { method: 'POST', body: newConfig }); if (ok) { setConfig(newConfig); onConfigUpdate(newConfig); setSortedKeys([...sortedKeys, newVal]); setSelectedType(newVal); notify.show('موفقیت', 'اضافه شد.', 'success'); } } catch(e){}
@@ -154,7 +197,12 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     
     const listKeys = selectedType ? Object.keys(listLabels).filter(key => (selectedType === 'General' ? key === 'locations' : key !== 'locations')) : [];
 
-    // تابع کمکی برای تغییر پیشوند
+    // =========================================================================
+    /**
+     * نام تابع: handlePrefixChange
+     * کارایی: به‌روزرسانی پیشوند ۳ کاراکتری کدینگ برای دسته‌بندی انتخاب شده
+     */
+    // =========================================================================
     const handlePrefixChange = (val) => {
         if (!selectedType) return;
         const newConfig = { ...config };
@@ -162,6 +210,9 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         setConfig(newConfig);
     };
 
+    // =========================================================================
+    // بخش نمایش و رابط کاربری (VIEW / UI)
+    // =========================================================================
     return (
         <div className="flex-1 p-6 overflow-hidden h-full flex flex-col">
             <InputModal isOpen={renameModal.open} onClose={() => setRenameModal({ ...renameModal, open: false })} onConfirm={handleRenameSubmit} title="تغییر نام" label="نام جدید:" initialValue={renameModal.oldVal} />
@@ -209,20 +260,17 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {listKeys.map(listName => { 
     const meta = listLabels[listName] || { label: listName, icon: 'list' }; 
-    // دریافت تنظیمات ذخیره شده برای این فیلد
     const fieldSettings = config[selectedType].fields?.[listName] || {};
     const displayLabel = fieldSettings.label || meta.label;
     const isRequired = !!fieldSettings.required;
-    const isVisible = fieldSettings.visible !== false; // پیش‌فرض نمایش داده شود
+    const isVisible = fieldSettings.visible !== false;
 
     return (
         <div key={listName} className="bg-slate-900/50 p-4 rounded-xl border border-white/5 hover:border-white/10 transition group/card">
-            {/* هدر کارت: تنظیمات نام و الزامی بودن */}
             <div className="flex flex-col gap-2 mb-4 border-b border-white/5 pb-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 flex-1">
                         <i data-lucide={meta.icon} className="w-4 h-4 text-nexus-accent"></i> 
-                        {/* ورودی تغییر نام فیلد */}
                         <input 
                             className="bg-transparent border-b border-transparent hover:border-white/20 focus:border-nexus-accent text-sm font-bold text-gray-300 focus:text-white outline-none w-full transition-colors placeholder-gray-600"
                             value={displayLabel}
@@ -232,7 +280,6 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
                         />
                     </div>
                 </div>
-                {/* دکمه‌های کنترلی */}
                 <div className="flex gap-2">
                     <button 
                         onClick={() => handleFieldConfigChange(listName, 'required', !isRequired)}
@@ -249,7 +296,6 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
                 </div>
             </div>
 
-            {/* قسمت افزودن آیتم به لیست (مثل قبل) */}
             <div className="flex gap-2 mb-3">
                 <input className="nexus-input flex-1 px-3 py-1.5 text-xs" placeholder="آیتم پیش‌فرض..." value={newItems[listName] || ''} onChange={(e) => setNewItems({...newItems, [listName]: e.target.value})} />
                 <button onClick={() => handleAddItem(listName, newItems[listName])} className="bg-nexus-primary hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg"><i data-lucide="plus" className="w-4 h-4"></i></button>

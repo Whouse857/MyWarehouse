@@ -1,7 +1,29 @@
-// [TAG: PAGE_WITHDRAW]
-// صفحه برداشت قطعه (سبد خروج)
-// نسخه اصلاح شده: خروج خودکار پرینت پس از تایید، اعلان‌های خودکار نارنجی و بهبود تایپ دستی
+/**
+ * نام فایل: Withdraw Page.js
+ * نویسنده: سرگلی
+ * نسخه: V0.20
+ * * کلیات عملکرد و توابع:
+ * این ماژول وظیفه مدیریت فرآیند برداشت (خروج) قطعات از انبار را بر عهده دارد.
+ * کاربران می‌توانند قطعات را جستجو کرده، به سبد خروج اضافه کنند و پس از تایید نهایی، حواله خروج صادر نمایند.
+ * * توابع و بخش‌های کلیدی:
+ * 1. getPartCodeLocal: تولید یا دریافت کد اختصاصی قطعه برای نمایش.
+ * 2. loadParts: بارگذاری لیست کامل قطعات و تنظیمات سیستم از سرور.
+ * 3. addToCart: افزودن یک قطعه به سبد خروج با بررسی موجودی انبار.
+ * 4. updateCartQty / handleManualQtyChange: تغییر تعداد درخواستی در سبد خروج.
+ * 5. handlePrintPickList: تولید و چاپ حواله خروج (لیست برداشت).
+ * 6. handleCheckout: ثبت نهایی تراکنش خروج در سرور و کسر موجودی.
+ */
 
+// =========================================================================
+// بخش توابع کمکی (HELPER FUNCTIONS)
+// =========================================================================
+
+// =========================================================================
+/**
+ * نام تابع: getPartCodeLocal
+ * کارایی: دریافت کد قطعه جهت نمایش در لیست‌ها (با اولویت کد دیتابیس)
+ */
+// =========================================================================
 const getPartCodeLocal = (p, config) => {
     if (!p) return "---";
     // اولویت با کد اختصاصی ذخیره شده در دیتابیس
@@ -14,7 +36,14 @@ const getPartCodeLocal = (p, config) => {
     return `${prefix}${numeric}`;
 };
 
+// =========================================================================
+// کامپوننت اصلی صفحه (MAIN COMPONENT)
+// =========================================================================
+
 const WithdrawPage = ({ user, serverStatus }) => {
+    // =========================================================================
+    // بخش منطق و توابع (LOGIC & FUNCTIONS)
+    // =========================================================================
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("All");
     const [cart, setCart] = useState([]);
@@ -25,6 +54,12 @@ const WithdrawPage = ({ user, serverStatus }) => {
     const notify = useNotify();
     const dialog = useDialog();
 
+    // =========================================================================
+    /**
+     * نام تابع: loadParts
+     * کارایی: بارگذاری لیست قطعات و تنظیمات کلی سیستم از API
+     */
+    // =========================================================================
     const loadParts = useCallback(async () => {
         try {
             const [partsRes, configRes] = await Promise.all([
@@ -38,11 +73,23 @@ const WithdrawPage = ({ user, serverStatus }) => {
 
     useEffect(() => { loadParts(); }, [loadParts]);
 
+    // =========================================================================
+    /**
+     * متغیر محاسباتی: categories
+     * کارایی: استخراج لیست دسته‌بندی‌های موجود از لیست قطعات جهت فیلتر
+     */
+    // =========================================================================
     const categories = useMemo(() => {
         const cats = ["All", ...new Set(partsList.map(p => p.type || "Other"))];
         return cats.sort();
     }, [partsList]);
 
+    // =========================================================================
+    /**
+     * متغیر محاسباتی: filteredParts
+     * کارایی: فیلتر کردن لیست قطعات بر اساس دسته‌بندی و عبارت جستجو
+     */
+    // =========================================================================
     const filteredParts = useMemo(() => {
         let res = partsList;
         if (selectedCategory !== "All") {
@@ -63,12 +110,24 @@ const WithdrawPage = ({ user, serverStatus }) => {
 
     useLucide([cart, filteredParts, selectedCategory]);
 
+    // =========================================================================
+    /**
+     * نام تابع: getStockStatus
+     * کارایی: تعیین وضعیت موجودی (ناموجود، کم، موجود) برای نمایش رنگ‌بندی
+     */
+    // =========================================================================
     const getStockStatus = (qty, minQty) => {
         if (qty <= 0) return { color: 'bg-red-500', text: 'text-red-500', label: 'ناموجود' };
         if (qty <= minQty) return { color: 'bg-orange-500', text: 'text-orange-500', label: 'کم' };
         return { color: 'bg-emerald-500', text: 'text-emerald-500', label: 'موجود' };
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: addToCart
+     * کارایی: افزودن یک قطعه به سبد خروج با بررسی محدودیت موجودی
+     */
+    // =========================================================================
     const addToCart = (part, exactQty = null) => {
         let qtyToAdd = 1;
         const existing = cart.find(i => i.id === part.id);
@@ -94,6 +153,12 @@ const WithdrawPage = ({ user, serverStatus }) => {
         }
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: updateCartQty
+     * کارایی: افزایش یا کاهش تعداد یک آیتم در سبد خروج (توسط دکمه‌های +/-)
+     */
+    // =========================================================================
     const updateCartQty = (id, delta) => {
         const item = cart.find(i => i.id === id);
         const part = partsList.find(p => p.id === id);
@@ -110,6 +175,12 @@ const WithdrawPage = ({ user, serverStatus }) => {
         setCart(cart.map(i => i.id === id ? { ...i, qty: newQty } : i));
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleManualQtyChange
+     * کارایی: مدیریت تغییر دستی تعداد در اینپوت سبد خرید (فقط اعداد مجاز است)
+     */
+    // =========================================================================
     const handleManualQtyChange = (id, value) => {
         const part = partsList.find(p => p.id === id);
         if (!part) return;
@@ -126,7 +197,12 @@ const WithdrawPage = ({ user, serverStatus }) => {
         setCart(cart.map(i => i.id === id ? { ...i, qty: newQty } : i));
     };
 
-    // تابع پرینت (حواله برداشت)
+    // =========================================================================
+    /**
+     * نام تابع: handlePrintPickList
+     * کارایی: ایجاد پنجره چاپ برای حواله خروج کالا (Pick List)
+     */
+    // =========================================================================
     const handlePrintPickList = (currentCart = cart, reason = projectReason) => {
         if (currentCart.length === 0) return;
         const printWindow = window.open('', '_blank');
@@ -200,6 +276,12 @@ const WithdrawPage = ({ user, serverStatus }) => {
         printWindow.document.close();
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleCheckout
+     * کارایی: ثبت نهایی خروج قطعات، ارسال به سرور، چاپ حواله و پاکسازی سبد
+     */
+    // =========================================================================
     const handleCheckout = async () => {
         if (cart.length === 0) return;
         if (cart.some(i => i.qty <= 0)) return notify.show('خطا', 'تعداد قطعات برداشتی نمی‌تواند صفر باشد.', 'info');
@@ -233,6 +315,9 @@ const WithdrawPage = ({ user, serverStatus }) => {
         }
     };
 
+    // =========================================================================
+    // بخش نمایش و رابط کاربری (VIEW / UI)
+    // =========================================================================
     return (
         <div className="flex-1 p-6 flex flex-col h-full overflow-hidden">
             <header className="mb-4 flex flex-col gap-4">

@@ -1,18 +1,51 @@
-// [TAG: PAGE_INVENTORY]
-// داشبورد پیشرفته تحلیل و آمار انبار نکسوس
-// نسخه اصلاح شده: نمایش کد 12 کاراکتری اختصاصی در آمار و لیست پرینت
+/**
+ * نام فایل: inventory.js
+ * نویسنده: سرگلی
+ * نسخه: V0.20
+ * * کلیات عملکرد و توابع:
+ * این ماژول وظیفه نمایش داشبورد تحلیلی و آماری انبار را بر عهده دارد.
+ * شامل نمایش شاخص‌های کلیدی عملکرد (KPIs)، تحلیل سرمایه بر اساس دسته‌بندی‌ها و گزارش کسری موجودی است.
+ * * توابع و بخش‌های کلیدی:
+ * 1. formatDecimal / formatInteger: توابع کمکی برای فرمت‌دهی اعداد و مبالغ.
+ * 2. getPartCodeInv: تولید کد اختصاصی قطعه برای نمایش در جداول.
+ * 3. KPICard: کامپوننت نمایش کارت‌های آمار کلیدی (مثل ارزش کل، تعداد کل).
+ * 4. loadStats: دریافت آمار تجمیعی و تنظیمات از سرور.
+ * 5. handlePrintShortages: تولید و چاپ گزارش کسری موجودی (لیست خرید).
+ * 6. PurchaseLinks: کامپوننت نمایش لینک‌های خرید آنلاین برای هر قطعه.
+ */
 
+// =========================================================================
+// بخش توابع کمکی (HELPER FUNCTIONS)
+// =========================================================================
+
+// =========================================================================
+/**
+ * نام تابع: formatDecimal
+ * کارایی: فرمت‌دهی اعداد اعشاری (مانند مبالغ ارزی) با دو رقم اعشار و جداکننده هزارگان
+ */
+// =========================================================================
 const formatDecimal = (num) => {
     if (num === undefined || num === null || isNaN(num)) return '0.00';
     return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+// =========================================================================
+/**
+ * نام تابع: formatInteger
+ * کارایی: فرمت‌دهی اعداد صحیح (مانند تعداد یا مبالغ ریالی) با جداکننده هزارگان
+ */
+// =========================================================================
 const formatInteger = (num) => {
     if (num === undefined || num === null || isNaN(num)) return '0';
     return Number(num).toLocaleString('en-US');
 };
 
-// تابع تولید کد اختصاصی 12 کاراکتری
+// =========================================================================
+/**
+ * نام تابع: getPartCodeInv
+ * کارایی: تولید یا دریافت کد اختصاصی 12 کاراکتری قطعه برای نمایش در گزارش‌ها
+ */
+// =========================================================================
 const getPartCodeInv = (item, config) => {
     if (!item) return "---";
     // اولویت با کد اختصاصی ذخیره شده در دیتابیس (بسیار مهم)
@@ -24,6 +57,16 @@ const getPartCodeInv = (item, config) => {
     return `${prefix}${numeric}`;
 };
 
+// =========================================================================
+// بخش کامپوننت‌های فرعی (SUB-COMPONENTS)
+// =========================================================================
+
+// =========================================================================
+/**
+ * نام کامپوننت: KPICard
+ * کارایی: کارت گرافیکی برای نمایش یک شاخص کلیدی عملکرد (KPI) با آیکون و انیمیشن
+ */
+// =========================================================================
 const KPICard = ({ title, value, subtitle, icon, color, delay = 0 }) => (
     <div 
         className={`glass-panel p-5 rounded-2xl relative overflow-hidden group hover:-translate-y-1 transition-all duration-500 animate-scale-in border border-white/5 hover:border-${color}-500/30`} 
@@ -45,6 +88,12 @@ const KPICard = ({ title, value, subtitle, icon, color, delay = 0 }) => (
     </div>
 );
 
+// =========================================================================
+/**
+ * نام کامپوننت: PurchaseLinks
+ * کارایی: نمایش لیست لینک‌های خرید آنلاین به صورت دکمه‌های کوچک
+ */
+// =========================================================================
 const PurchaseLinks = ({ links }) => {
     if (!links || links.length === 0) return <span className="text-[10px] text-gray-600">-</span>;
 
@@ -67,13 +116,26 @@ const PurchaseLinks = ({ links }) => {
     );
 };
 
+// =========================================================================
+// کامپوننت اصلی صفحه (MAIN COMPONENT)
+// =========================================================================
+
 const InventoryPage = () => {
+    // =========================================================================
+    // بخش منطق و توابع (LOGIC & FUNCTIONS)
+    // =========================================================================
     const [stats, setStats] = React.useState(null);
     const [config, setConfig] = React.useState(null);
     const [loading, setLoading] = React.useState(true);
     const [activeTab, setActiveTab] = React.useState('overview');
     const notify = useNotify();
 
+    // =========================================================================
+    /**
+     * نام تابع: loadStats
+     * کارایی: دریافت آمار کلی انبار و تنظیمات سیستم از API
+     */
+    // =========================================================================
     const loadStats = React.useCallback(async () => {
         setLoading(true);
         try {
@@ -93,10 +155,22 @@ const InventoryPage = () => {
 
     React.useEffect(() => { loadStats(); }, [loadStats]);
     
+    // =========================================================================
+    /**
+     * نام هوک: useEffect (Icon Refresh)
+     * کارایی: رندر مجدد آیکون‌های Lucide هنگام تغییر تب فعال یا بارگذاری آمار
+     */
+    // =========================================================================
     React.useEffect(() => {
         if (window.lucide) window.lucide.createIcons();
     }, [stats, activeTab]);
 
+    // =========================================================================
+    /**
+     * نام تابع: handlePrintShortages
+     * کارایی: ایجاد یک پنجره جدید برای چاپ لیست کسری موجودی (سفارش خرید)
+     */
+    // =========================================================================
     const handlePrintShortages = () => {
         if (!stats || !stats.shortages || stats.shortages.length === 0) return;
         const printWindow = window.open('', '_blank');
@@ -193,6 +267,9 @@ const InventoryPage = () => {
     Object.entries(stats.categories).forEach(([name, data]) => { if (data.value === maxCategoryVal) topCategory = name; });
     const avgPrice = totalQty > 0 ? (stats.total_value_toman / totalQty) : 0;
 
+    // =========================================================================
+    // بخش نمایش و رابط کاربری (VIEW / UI)
+    // =========================================================================
     return (
         <div className="flex-1 p-6 overflow-y-auto custom-scroll h-full">
             <header className="mb-8 flex flex-col md:flex-row justify-between items-end md:items-center gap-4">

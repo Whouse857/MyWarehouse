@@ -1,6 +1,22 @@
-// [TAG: PAGE_ENTRY]
-// صفحه ورود قطعه (ثبت اطلاعات) - نسخه بهینه‌سازی شده حرفه‌ای
-// حفظ کامل ساختار ظاهری و منطق تجاری با بهبود کارایی رندرینگ
+/**
+ * نام فایل: Entry Page.js
+ * نویسنده: سرگلی
+ * نسخه: V0.20
+ * * کلیات عملکرد و توابع:
+ * این ماژول وظیفه نمایش صفحه ورود اطلاعات قطعات (Entry Page) را بر عهده دارد.
+ * امکان ثبت قطعه جدید، ویرایش قطعات موجود، جستجو و فیلتر کردن لیست قطعات در این صفحه فراهم شده است.
+ * * توابع و بخش‌های کلیدی:
+ * 1. getInitialFormData: ایجاد آبجکت اولیه برای فرم خالی با مقادیر پیش‌فرض.
+ * 2. PartRow: کامپوننت رندر کننده هر ردیف از لیست قطعات (بهینه شده با Memo).
+ * 3. loadData: بارگذاری لیست قطعات و مخاطبین از سرور.
+ * 4. handleSubmit / handleFinalSubmit: اعتبارسنجی اولیه و ارسال نهایی اطلاعات به سرور.
+ * 5. handleEdit / handleDelete: مدیریت عملیات ویرایش و حذف قطعات.
+ * 6. duplicates / filteredParts: منطق‌های محاسباتی (Memoized) برای یافتن موارد تکراری و فیلتر کردن لیست نمایش.
+ */
+
+// =========================================================================
+// بخش تعاریف و ثوابت (CONSTANTS & DEFINITIONS)
+// =========================================================================
 
 /**
  * تنظیمات ثابت فیلدهای داینامیک
@@ -19,9 +35,12 @@ const DYNAMIC_FIELDS_MAP = [
   { key: 'list10', stateKey: 'list10', label: 'فیلد ۱۰' },
 ];
 
+// =========================================================================
 /**
- * ایجاد دیتای اولیه فرم
+ * نام تابع: getInitialFormData
+ * کارایی: ایجاد دیتای اولیه فرم (ریست کردن استیت فرم)
  */
+// =========================================================================
 const getInitialFormData = (type = "Resistor") => ({
   id: null,
   val: "",
@@ -44,8 +63,10 @@ const getInitialFormData = (type = "Resistor") => ({
   list5: "", list6: "", list7: "", list8: "", list9: "", list10: ""
 });
 
-/** * --- توابع کمکی (Utilities) ---
- */
+// =========================================================================
+// بخش توابع کمکی (UTILITIES)
+// =========================================================================
+
 const cleanText = (str) => String(str || '').toLowerCase().replace(/\s+/g, '');
 const normalizeText = (s) => s ? String(s).toLowerCase().replace(/,/g, '').trim() : '';
 
@@ -62,6 +83,10 @@ const getPartCode = (p, globalConfig) => {
   const numeric = String(p.id).padStart(9, '0');
   return `${prefix}${numeric}`;
 };
+
+// =========================================================================
+// بخش کامپوننت‌های فرعی (SUB-COMPONENTS)
+// =========================================================================
 
 /**
  * کامپوننت سطر قطعه (بهینه شده با Memo)
@@ -152,10 +177,15 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
   );
 };
 
-/**
- * کامپوننت اصلی
- */
+// =========================================================================
+// کامپوننت اصلی صفحه (MAIN COMPONENT)
+// =========================================================================
+
 const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
+  // =========================================================================
+  // بخش منطق و توابع (LOGIC & FUNCTIONS)
+  // =========================================================================
+
   const [formData, setFormData] = useState(() => getInitialFormData());
   const [partsList, setPartsList] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -168,6 +198,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
   const notify = useNotify();
   const dialog = useDialog();
 
+  // =========================================================================
+  /**
+   * نام تابع: loadData
+   * کارایی: بارگذاری لیست قطعات و لیست تامین‌کنندگان از سرور
+   */
+  // =========================================================================
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -187,6 +223,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // =========================================================================
+  /**
+   * نام تابع: resetForm
+   * کارایی: پاک کردن فرم و تنظیم مقادیر پیش‌فرض بر اساس نوع قطعه انتخاب شده
+   */
+  // =========================================================================
   const resetForm = useCallback((type = "Resistor") => {
     const typeConfig = globalConfig?.[type] || globalConfig?.["Resistor"] || {};
     const defUnit = (typeConfig.units && typeConfig.units[0]) || "";
@@ -195,7 +237,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     setLinkInput("");
   }, [globalConfig]);
 
-  // پیدا کردن قطعات تکراری
+  // =========================================================================
+  /**
+   * متغیر محاسباتی: duplicates
+   * کارایی: پیدا کردن قطعات تکراری در لیست موجود برای جلوگیری از ثبت تکراری (هشدار به کاربر)
+   */
+  // =========================================================================
   const duplicates = useMemo(() => {
     if (!formData.val || !formData.type) return [];
     const formFullVal = cleanText(formData.val + (formData.unit && formData.unit !== '-' ? formData.unit : ''));
@@ -210,7 +257,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     });
   }, [formData.val, formData.unit, formData.pkg, formData.type, partsList, formData.id]);
 
-  // فیلتر کردن لیست قطعات
+  // =========================================================================
+  /**
+   * متغیر محاسباتی: filteredParts
+   * کارایی: فیلتر کردن لیست قطعات نمایش داده شده بر اساس مقادیر ورودی در فیلد جستجو
+   */
+  // =========================================================================
   const filteredParts = useMemo(() => {
     const activeCategory = normalizeText(formData.type);
     const filterVal = normalizeText(filters.val);
@@ -255,6 +307,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
   useLucide([filteredParts.length, formData.type, duplicates.length, formData.purchase_links.length, showSummary]);
 
+  // =========================================================================
+  /**
+   * نام تابع: handleChange
+   * کارایی: مدیریت تغییرات ورودی‌های فرم و به‌روزرسانی State با اعمال قوانین (مثل اعداد)
+   */
+  // =========================================================================
   const handleChange = useCallback((key, val) => {
     let processedValue = val;
     
@@ -301,6 +359,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     setFormData(prev => ({ ...prev, purchase_links: prev.purchase_links.filter((_, i) => i !== index) }));
   };
 
+  // =========================================================================
+  /**
+   * نام تابع: handleSubmit
+   * کارایی: اعتبارسنجی اولیه فرم قبل از نمایش خلاصه وضعیت
+   */
+  // =========================================================================
   const handleSubmit = () => {
     const newErrors = {};
     const typeConfig = globalConfig?.[formData.type] || {};
@@ -329,6 +393,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     setShowSummary(true);
   };
 
+  // =========================================================================
+  /**
+   * نام تابع: handleFinalSubmit
+   * کارایی: ارسال نهایی داده‌ها به سرور برای ذخیره (Save)
+   */
+  // =========================================================================
   const handleFinalSubmit = async () => {
     const fullVal = formData.val + (formData.unit && formData.unit !== "-" ? formData.unit : "");
     const payload = {
@@ -356,6 +426,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     }
   };
 
+  // =========================================================================
+  /**
+   * نام تابع: handleEdit
+   * کارایی: بارگذاری اطلاعات یک قطعه در فرم جهت ویرایش
+   */
+  // =========================================================================
   const handleEdit = useCallback((p) => {
     let category = p.type || "Resistor";
     const config = globalConfig?.[category] || globalConfig?.["Resistor"] || {};
@@ -402,6 +478,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [globalConfig]);
 
+  // =========================================================================
+  /**
+   * نام تابع: handleDelete
+   * کارایی: حذف یک قطعه از سیستم پس از تایید کاربر
+   */
+  // =========================================================================
   const handleDelete = useCallback(async (id) => {
     const confirmed = await dialog.ask("حذف قطعه", "آیا از حذف این قطعه از انبار اطمینان دارید؟ این عمل غیرقابل بازگشت است.", "danger");
     if (confirmed) {
@@ -434,6 +516,9 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     return fConfig ? fConfig.visible : ['units', 'paramOptions', 'packages', 'techs'].includes(key);
   }, [currentConfig]);
 
+  // =========================================================================
+  // بخش نمایش و رابط کاربری (VIEW / UI)
+  // =========================================================================
   return (
     <ErrorBoundary>
       <div className="flex-1 flex flex-col min-w-0 h-full relative">

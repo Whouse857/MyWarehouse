@@ -1,9 +1,25 @@
-// [TAG: MODULE_ADMIN_USERS]
-// ماژول مدیریت کاربران - تفکیک شده از Admin Pages.js
+/**
+ * نام فایل: admin_users.js
+ * نویسنده: سرگلی
+ * نسخه: V0.20
+ * * کلیات عملکرد و توابع:
+ * این ماژول وظیفه مدیریت کاربران سیستم (افزودن، ویرایش، حذف) و تعیین سطوح دسترسی آن‌ها را بر عهده دارد.
+ * * توابع کلیدی:
+ * 1. loadUsers: دریافت لیست کامل کاربران از سرور.
+ * 2. handleSaveUser: اعتبارسنجی فرم و ارسال درخواست ذخیره (ایجاد یا ویرایش) کاربر به سرور.
+ * 3. handleEditUser: آماده‌سازی فرم با اطلاعات کاربر انتخاب شده جهت ویرایش.
+ * 4. handleDeleteUser: حذف کاربر از سیستم پس از تایید نهایی.
+ * 5. togglePermission: مدیریت تیک‌های دسترسی (فعال/غیرفعال کردن یک مجوز خاص).
+ * 6. getUserStatusBadge: تحلیل سطح دسترسی کاربر و تعیین عنوان (مدیر، کاربر ارشد، عادی) و رنگ بج نمایشی.
+ */
 
 const { useState, useEffect, useCallback } = React;
 
 const UsersPage = ({ serverStatus }) => {
+    // =========================================================================
+    // بخش منطق و توابع (LOGIC & FUNCTIONS)
+    // =========================================================================
+
     const [users, setUsers] = useState([]);
     
     const defaultPerms = {
@@ -18,16 +34,29 @@ const UsersPage = ({ serverStatus }) => {
     const notify = useNotify();
     const dialog = useDialog();
 
+    // =========================================================================
+    /**
+     * نام تابع: loadUsers
+     * کارایی: دریافت لیست کاربران از سرور و به‌روزرسانی State
+     */
+    // =========================================================================
     const loadUsers = useCallback(async () => { 
         try { const { ok, data } = await fetchAPI('/users'); if(ok) setUsers(data); } catch(e){} 
     }, []);
     
     useEffect(() => { loadUsers(); }, [loadUsers]);
+    
     // توجه: تابع useLucide باید در سطح گلوبال در دسترس باشد
     if (typeof useLucide === 'function') {
         useLucide([users, newUser.id]);
     }
 
+    // =========================================================================
+    /**
+     * نام تابع: handleSaveUser
+     * کارایی: مدیریت ذخیره‌سازی کاربر (چه جدید و چه ویرایش) شامل اعتبارسنجی ورودی‌ها
+     */
+    // =========================================================================
     const handleSaveUser = async () => {
         if(!newUser.username || (!newUser.id && !newUser.password)) 
             return notify.show('خطای اعتبارسنجی', "نام کاربری و رمز عبور (برای کاربر جدید) الزامی است.", 'error');
@@ -41,6 +70,12 @@ const UsersPage = ({ serverStatus }) => {
         } catch(e) { notify.show('خطای سرور', "ارتباط با سرور برقرار نشد.", 'error'); }
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleEditUser
+     * کارایی: پر کردن فرم با اطلاعات کاربر انتخاب شده جهت ویرایش
+     */
+    // =========================================================================
     const handleEditUser = (user) => { 
         let userPerms = user.permissions;
         if (typeof userPerms === 'string') { try { userPerms = JSON.parse(userPerms); } catch (e) { userPerms = {}; } }
@@ -49,16 +84,34 @@ const UsersPage = ({ serverStatus }) => {
         setNewUser({ ...user, password: '', permissions: userPerms }); 
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: handleDeleteUser
+     * کارایی: ارسال درخواست حذف کاربر به سرور
+     */
+    // =========================================================================
     const handleDeleteUser = async (id) => { 
         if(await dialog.ask("حذف کاربر", "آیا از حذف این کاربر اطمینان دارید؟", "danger")) {
             try { const { ok } = await fetchAPI(`/users/delete/${id}`, { method: 'DELETE' }); if(ok) { loadUsers(); notify.show('حذف شد', 'کاربر حذف گردید.', 'success'); } } catch(e){} 
         }
     };
 
+    // =========================================================================
+    /**
+     * نام تابع: togglePermission
+     * کارایی: تغییر وضعیت (Toggle) یک آیتم دسترسی در آبجکت permissions
+     */
+    // =========================================================================
     const togglePermission = (key) => {
         setNewUser(prev => ({ ...prev, permissions: { ...prev.permissions, [key]: !prev.permissions[key] } }));
     };
     
+    // =========================================================================
+    /**
+     * نام تابع: getUserStatusBadge
+     * کارایی: پردازش دسترسی‌ها برای تعیین نقش نمایشی کاربر (مانند: مدیر کل، کاربر ارشد)
+     */
+    // =========================================================================
     const getUserStatusBadge = (u) => {
         let perms = u.permissions;
         if (typeof perms === 'string') { try { perms = JSON.parse(perms); } catch(e){ perms = {}; } }
@@ -70,6 +123,9 @@ const UsersPage = ({ serverStatus }) => {
         return { label: 'بدون دسترسی', style: 'bg-red-500/20 text-red-300 border-red-500/30' };
     };
 
+    // =========================================================================
+    // بخش نمایش و رابط کاربری (VIEW / UI)
+    // =========================================================================
     return (
         <div className="flex-1 p-8 pb-20 overflow-y-auto custom-scroll">
             <div className="flex items-center justify-between mb-8 pb-6 border-b border-white/5">
