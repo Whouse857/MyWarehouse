@@ -1,20 +1,51 @@
-// [TAG: PAGE_WITHDRAW]
-// صفحه برداشت قطعه (سبد خروج)
-// نسخه اصلاح شده: خروج خودکار پرینت پس از تایید، اعلان‌های خودکار نارنجی و بهبود تایپ دستی
+// ====================================================================================================
+// نسخه: 0.20
+// فایل: Withdraw Page.js
+// تهیه کننده: ------
+//
+// توضیحات کلی ماژول:
+// این صفحه، "میز کار برداشت" یا همان سبد خروج کالا از انبار است.
+// کاربر در این بخش می‌تواند قطعات را جستجو کرده، به لیست خروج اضافه کند و در نهایت یک حواله خروج صادر نماید.
+// 
+// ویژگی‌های کلیدی:
+// ۱. جستجوی پیشرفته و فیلترینگ قطعات بر اساس دسته‌بندی.
+// ۲. مدیریت سبد کالا (افزودن، کاهش، تغییر دستی تعداد).
+// ۳. کنترل موجودی (جلوگیری از برداشت بیش از حد موجودی).
+// ۴. تولید و چاپ خودکار "حواله خروج" (Pick List) پس از تایید نهایی.
+// ۵. کسر موجودی از دیتابیس سرور.
+// ====================================================================================================
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: تولید کد قطعه محلی]
+// تابع کمکی برای نمایش کد اختصاصی قطعه در لیست‌های این صفحه.
+// اگر کد در دیتابیس باشد آن را برمی‌گرداند، در غیر این صورت آن را بر اساس الگوی تنظیمات می‌سازد.
+// ----------------------------------------------------------------------------------------------------
 const getPartCodeLocal = (p, config) => {
     if (!p) return "---";
     // اولویت با کد اختصاصی ذخیره شده در دیتابیس
     if (p.part_code) return p.part_code;
     
-    // حالت رزرو برای قطعات قدیمی
+    // حالت رزرو برای قطعات قدیمی که هنوز کد ندارند
     if (!p.id) return "---";
+    // دریافت پیشوند از تنظیمات (مثلاً IC برای آی‌سی‌ها)
     const prefix = (config && config[p.type]?.prefix) || "PRT";
     const numeric = String(p.id).padStart(9, '0');
     return `${prefix}${numeric}`;
 };
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت اصلی صفحه برداشت]
+// ----------------------------------------------------------------------------------------------------
 const WithdrawPage = ({ user, serverStatus }) => {
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: مدیریت وضعیت (State)]
+    // searchTerm: عبارت جستجو شده توسط کاربر.
+    // selectedCategory: فیلتر دسته‌بندی انتخاب شده (پیش‌فرض: All).
+    // cart: آرایه‌ای از اشیاء که اقلام موجود در سبد خروج را نگهداری می‌کند.
+    // partsList: لیست کل قطعات موجود در انبار.
+    // projectReason: دلیل مصرف یا نام پروژه (الزامی برای خروج).
+    // globalConfig: تنظیمات سیستم برای تولید کدها.
+    // ------------------------------------------------------------------------------------------------
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("All");
     const [cart, setCart] = useState([]);
@@ -22,9 +53,14 @@ const WithdrawPage = ({ user, serverStatus }) => {
     const [projectReason, setProjectReason] = useState("");
     const [globalConfig, setGlobalConfig] = useState(null);
     
+    // هوک‌های اعلان و دیالوگ
     const notify = useNotify();
     const dialog = useDialog();
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: بارگذاری اطلاعات]
+    // دریافت لیست قطعات و تنظیمات سیستم در لحظه ورود به صفحه.
+    // ------------------------------------------------------------------------------------------------
     const loadParts = useCallback(async () => {
         try {
             const [partsRes, configRes] = await Promise.all([
@@ -38,16 +74,27 @@ const WithdrawPage = ({ user, serverStatus }) => {
 
     useEffect(() => { loadParts(); }, [loadParts]);
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: محاسبات دسته‌بندی]
+    // استخراج لیست دسته‌بندی‌های موجود از لیست قطعات برای نمایش در فیلترها.
+    // ------------------------------------------------------------------------------------------------
     const categories = useMemo(() => {
         const cats = ["All", ...new Set(partsList.map(p => p.type || "Other"))];
         return cats.sort();
     }, [partsList]);
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: فیلترینگ لیست قطعات]
+    // فیلتر کردن قطعات بر اساس متن جستجو (نام، کد، آدرس، پکیج) و دسته‌بندی انتخاب شده.
+    // نتایج به ۵۰ مورد محدود می‌شوند تا عملکرد UI حفظ شود.
+    // ------------------------------------------------------------------------------------------------
     const filteredParts = useMemo(() => {
         let res = partsList;
+        // فیلتر دسته‌بندی
         if (selectedCategory !== "All") {
             res = res.filter(p => (p.type || "Other") === selectedCategory);
         }
+        // فیلتر جستجو
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             res = res.filter(p => 
@@ -61,25 +108,37 @@ const WithdrawPage = ({ user, serverStatus }) => {
         return res.slice(0, 50);
     }, [searchTerm, partsList, selectedCategory, globalConfig]);
 
+    // بروزرسانی آیکون‌ها هنگام تغییر نتایج
     useLucide([cart, filteredParts, selectedCategory]);
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: تعیین وضعیت موجودی]
+    // تعیین رنگ و متن وضعیت موجودی (ناموجود: قرمز، کم: نارنجی، موجود: سبز).
+    // ------------------------------------------------------------------------------------------------
     const getStockStatus = (qty, minQty) => {
         if (qty <= 0) return { color: 'bg-red-500', text: 'text-red-500', label: 'ناموجود' };
         if (qty <= minQty) return { color: 'bg-orange-500', text: 'text-orange-500', label: 'کم' };
         return { color: 'bg-emerald-500', text: 'text-emerald-500', label: 'موجود' };
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: افزودن به سبد]
+    // اضافه کردن یک قطعه به لیست خروج.
+    // این تابع بررسی می‌کند که موجودی کافی باشد و اگر قطعه قبلاً در سبد باشد، تعداد آن را افزایش می‌دهد.
+    // ------------------------------------------------------------------------------------------------
     const addToCart = (part, exactQty = null) => {
         let qtyToAdd = 1;
         const existing = cart.find(i => i.id === part.id);
         const currentInCart = existing ? existing.qty : 0;
         const remainingStock = part.quantity - currentInCart;
 
+        // اگر موجودی تمام شده باشد
         if (remainingStock <= 0) {
-            // استفاده از نوع info برای اطمینان از ناپدید شدن خودکار (طبق منطق Core شما) با متن هشدار
+            // استفاده از نوع info برای اطمینان از ناپدید شدن خودکار (طبق منطق Core) با متن هشدار
             return notify.show('موجودی ناکافی', 'تمام موجودی این قطعه در لیست خروج قرار دارد.', 'info');
         }
 
+        // اگر مقدار دقیق درخواست شده باشد (برای حالت‌های خاص)
         if (exactQty !== null) {
             qtyToAdd = exactQty;
             if (qtyToAdd > remainingStock) {
@@ -94,27 +153,38 @@ const WithdrawPage = ({ user, serverStatus }) => {
         }
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: تغییر تعداد در سبد]
+    // افزایش یا کاهش تعداد یک آیتم در سبد با دکمه‌های + و -.
+    // ------------------------------------------------------------------------------------------------
     const updateCartQty = (id, delta) => {
         const item = cart.find(i => i.id === id);
         const part = partsList.find(p => p.id === id);
         if (!item || !part) return;
 
         const newQty = item.qty + delta;
+        // حذف از سبد اگر تعداد صفر شود
         if (newQty <= 0) {
             setCart(cart.filter(i => i.id !== id));
             return;
         }
+        // جلوگیری از افزایش بیش از موجودی انبار
         if (newQty > part.quantity) {
             return notify.show('هشدار موجودی', `موجودی ناکافی. حداکثر مقدار: ${part.quantity}`, 'info');
         }
         setCart(cart.map(i => i.id === id ? { ...i, qty: newQty } : i));
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: تغییر دستی تعداد]
+    // تغییر تعداد با تایپ مستقیم عدد در اینپوت سبد.
+    // شامل منطق پاکسازی ورودی (فقط اعداد) و بررسی سقف موجودی.
+    // ------------------------------------------------------------------------------------------------
     const handleManualQtyChange = (id, value) => {
         const part = partsList.find(p => p.id === id);
         if (!part) return;
 
-        // تغییر جدید: حذف هر کاراکتری جز اعداد 0 تا 9
+        // تغییر جدید: حذف هر کاراکتری جز اعداد 0 تا 9 برای جلوگیری از خطا
         const cleanValue = value.replace(/[^0-9]/g, '');
         const newQty = cleanValue === '' ? 0 : parseInt(cleanValue);
 
@@ -126,7 +196,11 @@ const WithdrawPage = ({ user, serverStatus }) => {
         setCart(cart.map(i => i.id === id ? { ...i, qty: newQty } : i));
     };
 
-    // تابع پرینت (حواله برداشت)
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: چاپ حواله خروج]
+    // تولید یک صفحه HTML ساده و استاندارد برای پرینت فاکتور خروج (حواله).
+    // این صفحه در یک پنجره جدید باز شده و دستور پرینت به صورت خودکار اجرا می‌شود.
+    // ------------------------------------------------------------------------------------------------
     const handlePrintPickList = (currentCart = cart, reason = projectReason) => {
         if (currentCart.length === 0) return;
         const printWindow = window.open('', '_blank');
@@ -200,16 +274,22 @@ const WithdrawPage = ({ user, serverStatus }) => {
         printWindow.document.close();
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: ثبت نهایی خروج]
+    // ارسال اطلاعات سبد خروج به سرور، کسر موجودی و صدور پرینت.
+    // ------------------------------------------------------------------------------------------------
     const handleCheckout = async () => {
+        // اعتبارسنجی اولیه
         if (cart.length === 0) return;
         if (cart.some(i => i.qty <= 0)) return notify.show('خطا', 'تعداد قطعات برداشتی نمی‌تواند صفر باشد.', 'info');
         if (!projectReason.trim()) return notify.show('توجه', 'لطفاً نام پروژه یا دلیل مصرف را وارد کنید', 'info');
         
+        // دریافت تایید نهایی از کاربر
         const confirmed = await dialog.ask('تایید نهایی خروج', `آیا از خروج ${cart.length} ردیف قطعه برای "${projectReason}" اطمینان دارید؟`, 'warning');
         
         if (confirmed) {
             try {
-                // کپی از سبد برای پرینت، چون بعد از ok پاک می‌شود
+                // ذخیره موقت سبد برای پرینت، چون بعد از موفقیت سبد خالی می‌شود
                 const cartToPrint = [...cart];
                 const reasonToPrint = projectReason;
 
@@ -219,12 +299,14 @@ const WithdrawPage = ({ user, serverStatus }) => {
                 });
                 
                 if (ok) {
-                    // باز کردن تب پرینت به صورت خودکار
+                    // موفقیت: باز کردن پنجره پرینت
                     handlePrintPickList(cartToPrint, reasonToPrint);
                     
                     notify.show('موفقیت', 'خروج با موفقیت ثبت شد و حواله صادر گردید.', 'success');
+                    // ریست کردن فرم
                     setCart([]);
                     setProjectReason("");
+                    // بارگذاری مجدد لیست قطعات برای نمایش موجودی جدید
                     loadParts();
                 } else {
                     notify.show('خطا در سرور', data.error || 'خطا در ثبت خروج', 'error');
@@ -233,8 +315,13 @@ const WithdrawPage = ({ user, serverStatus }) => {
         }
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: رندر رابط کاربری]
+    // ساختار صفحه شامل هدر، پنل سبد خروج (چپ/بالا) و لیست قطعات (راست/پایین).
+    // ------------------------------------------------------------------------------------------------
     return (
         <div className="flex-1 p-6 flex flex-col h-full overflow-hidden">
+            {/* هدر: عنوان، جستجو و فیلترها */}
             <header className="mb-4 flex flex-col gap-4">
                 <div className="flex justify-between items-center">
                     <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -259,7 +346,12 @@ const WithdrawPage = ({ user, serverStatus }) => {
                     </div>
                 </div>
             </header>
+            
             <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-6 min-h-0">
+                {/* ------------------------------------------------------------------------------ */}
+                {/* [تگ: پنل سبد خروج]                                                              */}
+                {/* نمایش لیست اقلام انتخاب شده و دکمه صدور حواله                                  */}
+                {/* ------------------------------------------------------------------------------ */}
                 <div className="md:col-span-4 lg:col-span-3 flex flex-col gap-4 order-2 md:order-1">
                     <div className="glass-panel flex-1 flex flex-col rounded-2xl border border-white/10 overflow-hidden shadow-2xl relative">
                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-red-500"></div>
@@ -274,6 +366,8 @@ const WithdrawPage = ({ user, serverStatus }) => {
                                 <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full font-mono">{cart.length}</span>
                             </div>
                         </div>
+                        
+                        {/* محتوای سبد */}
                         <div className="flex-1 overflow-y-auto custom-scroll p-3 space-y-2 bg-[#020617]/20">
                             {cart.length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-40 gap-3"><div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center"><i data-lucide="package-open" className="w-8 h-8"></i></div><span className="text-xs">لیست خالی است</span><span className="text-[10px]">قطعات را از لیست انتخاب کنید</span></div>
@@ -303,6 +397,8 @@ const WithdrawPage = ({ user, serverStatus }) => {
                                 ))
                             )}
                         </div>
+                        
+                        {/* فوتِر سبد: اینپوت دلیل مصرف و دکمه ثبت */}
                         <div className="p-4 bg-[#1e293b] border-t border-white/5 space-y-3 z-10">
                             <div className="relative">
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-500"><i data-lucide="briefcase" className="w-4 h-4"></i></div>
@@ -312,6 +408,11 @@ const WithdrawPage = ({ user, serverStatus }) => {
                         </div>
                     </div>
                 </div>
+                
+                {/* ------------------------------------------------------------------------------ */}
+                {/* [تگ: لیست قطعات موجود]                                                          */}
+                {/* نمایش شبکه کارت‌ها برای انتخاب قطعه                                             */}
+                {/* ------------------------------------------------------------------------------ */}
                 <div className="md:col-span-8 lg:col-span-9 order-1 md:order-2 flex flex-col">
                     <div className="flex-1 overflow-y-auto custom-scroll pr-1">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
@@ -364,4 +465,7 @@ const WithdrawPage = ({ user, serverStatus }) => {
     );
 };
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: اتصال به فضای جهانی]
+// ----------------------------------------------------------------------------------------------------
 window.WithdrawPage = WithdrawPage;

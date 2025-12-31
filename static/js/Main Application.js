@@ -1,24 +1,46 @@
-// [TAG: MAIN_APP]
+// ====================================================================================================
+// نسخه: 0.20
+// فایل: Main Application.js
+// تهیه کننده: ------
+//
+// توضیحات کلی فایل:
+// این فایل نقطه ورود اصلی (Entry Point) منطق جاوااسکریپت در سمت کلاینت است.
+// تمام کامپوننت‌های اصلی برنامه در اینجا تجمیع و مدیریت می‌شوند.
+//
+// وظایف کلیدی:
+// ۱. مدیریت احراز هویت (Login/Logout) و نمایش صفحه ورود در صورت عدم دسترسی.
+// ۲. پیاده‌سازی ساختار کلی Layout (سایدبار، هدر و ناحیه محتوای اصلی).
+// ۳. مدیریت مسیریابی داخلی (Routing) بین صفحات مختلف (داشبورد، ورود کالا و...).
+// ۴. مدیریت وضعیت‌های جهانی برنامه (Global State) مثل اطلاعات کاربر، تنظیمات سرور و اعلان‌ها.
+// ۵. پیاده‌سازی اجزای بصری مشترک مانند پس‌زمینه متحرک (AppBackground) و سیستم اعلان (Toast).
+// ====================================================================================================
+
+// [تگ: MAIN_APP]
 // طراحی بصری اختصاصی H&Y با منطق دقیق فایل مرجع
 // اصلاح شده: استفاده از لوگو در پس‌زمینه و افزایش غلظت پنل‌های شیشه‌ای
 // تغییر جدید: عدم نمایش گزینه تغییر گذرواژه برای ادمین در منوی پروفایل
 // سازگاری با MySQL: اضافه شدن روت صفحه تنظیمات سرور
 
+// استخراج هوک‌های ضروری از کتابخانه React
 const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-// --- سیستم پس‌زمینه مهندسی H&Y ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت پس‌زمینه]
+// این کامپوننت مسئول ایجاد افکت‌های بصری پس‌زمینه در کل برنامه است.
+// شامل لایه‌های نوری متحرک (Blobs) و خطوط شبکه‌ای مهندسی است.
+// ----------------------------------------------------------------------------------------------------
 const AppBackground = () => (
   <div className="fixed inset-0 -z-20 overflow-hidden bg-[#01040f]">
-    {/* لایه‌های نوری متحرک */}
+    {/* لایه‌های نوری متحرک: ایجاد حس پویایی با انیمیشن‌های Pulse */}
     <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-blue-600/10 blur-[120px] animate-pulse"></div>
     <div className="absolute bottom-[-20%] right-[-10%] w-[70%] h-[70%] rounded-full bg-indigo-600/10 blur-[150px] animate-pulse" style={{ animationDelay: '3s' }}></div>
     
-    {/* خطوط شبکه‌ای مهندسی */}
+    {/* خطوط شبکه‌ای مهندسی: ایجاد بافت فنی در پس‌زمینه */}
     <div className="absolute inset-0 opacity-[0.06]" 
          style={{ backgroundImage: `linear-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, #1e293b 1px, transparent 1px)`, backgroundSize: '40px 40px' }}>
     </div>
     
-    {/* لوگوی برنامه در پس‌زمینه به جای متن */}
+    {/* لوگوی برنامه در پس‌زمینه: نمایش لوگوی شرکت به صورت بسیار کمرنگ و بزرگ در مرکز صفحه */}
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none p-20">
        <img 
           src="/static/logo.png" 
@@ -30,17 +52,25 @@ const AppBackground = () => (
   </div>
 );
 
-// --- کامپوننت اعلان (Toast) متمرکز و هوشمند ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: سیستم اعلان هوشمند (Toast)]
+// کامپوننتی برای نمایش پیام‌های موفقیت، خطا یا هشدار به کاربر.
+// این کامپوننت از انیمیشن‌های ورود/خروج و آیکون‌های Lucide استفاده می‌کند.
+// ----------------------------------------------------------------------------------------------------
 const NexusToast = ({ isOpen, onClose, title, message, type }) => {
+  // رندر مجدد آیکون‌ها هنگام باز شدن اعلان
   useEffect(() => { if (isOpen && window.lucide) window.lucide.createIcons(); }, [isOpen]);
+  
   if (!isOpen) return null;
   
+  // تعیین استایل بر اساس نوع پیام (خطا یا موفقیت)
   const isErr = type === 'error';
   const colorClass = isErr ? 'text-red-400' : 'text-blue-400';
   const borderClass = isErr ? 'border-red-500/30' : 'border-blue-500/30';
   const bgClass = isErr ? 'bg-red-500/20' : 'bg-blue-500/20'; 
   const icon = isErr ? 'alert-triangle' : 'check-circle-2';
 
+  // ساختار داخلی باکس اعلان
   const toastBox = (
     <div className={`flex flex-col items-center gap-3 p-6 rounded-[2.5rem] bg-[#0f172a]/95 backdrop-blur-xl border ${borderClass} shadow-[0_25px_60px_rgba(0,0,0,0.8)] animate-in fade-in zoom-in duration-300 max-w-sm pointer-events-auto text-center relative overflow-hidden`} dir="rtl" onClick={e => e.stopPropagation()}>
       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${bgClass} ${colorClass} mb-2 shadow-inner`}>
@@ -51,6 +81,7 @@ const NexusToast = ({ isOpen, onClose, title, message, type }) => {
         <span className="text-sm text-gray-200 leading-relaxed font-medium">{message}</span>
       </div>
       
+      {/* دکمه بستن: اگر خطا باشد دکمه بزرگ، در غیر این صورت دکمه ضربدر کوچک */}
       {isErr ? (
         <button onClick={onClose} className="mt-4 w-full py-3 rounded-2xl bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold transition-all shadow-lg text-sm active:scale-95">متوجه شدم</button>
       ) : (
@@ -68,21 +99,26 @@ const NexusToast = ({ isOpen, onClose, title, message, type }) => {
   );
 };
 
-// --- صفحه ورود (Login Page) اختصاصی H&Y ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: صفحه ورود (Login)]
+// فرم ورود اختصاصی که قبل از دسترسی به پنل اصلی نمایش داده می‌شود.
+// شامل اعتبارسنجی نام کاربری و رمز عبور از طریق API.
+// ----------------------------------------------------------------------------------------------------
 const LoginPage = ({ onLogin }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const notify = useNotify();
-  useLucide([]);
+  useLucide([]); // فعال‌سازی آیکون‌ها
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
+      // ارسال درخواست POST به روت /login
       const { ok, data } = await fetchAPI('/login', { method: 'POST', body: { username, password } });
       if (ok && data.success) {
-        onLogin(data);
+        onLogin(data); // ذخیره اطلاعات کاربر و انتقال به برنامه اصلی
       } else {
         notify.show('خطای ورود', data.message || "نام کاربری یا رمز عبور اشتباه است", 'error');
       }
@@ -98,6 +134,7 @@ const LoginPage = ({ onLogin }) => {
       <AppBackground />
       <div className="bg-[#020617]/95 backdrop-blur-2xl p-10 rounded-[3rem] w-full max-w-md shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/10 relative z-10">
         <div className="flex flex-col items-center mb-10">
+          {/* لوگوی درخشان بالای فرم ورود */}
           <div className="relative mb-6 group">
              <div className="absolute inset-0 bg-blue-500 blur-[40px] opacity-10"></div>
              <img 
@@ -125,7 +162,10 @@ const LoginPage = ({ onLogin }) => {
   );
 };
 
-// --- Change Password Modal ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: مودال تغییر رمز عبور]
+// پنجره پاپ‌آپ برای تغییر رمز عبور توسط کاربر (غیر از ادمین).
+// ----------------------------------------------------------------------------------------------------
 const ChangePasswordModal = ({ isOpen, onClose, username, notify }) => {
   const [d, setD] = useState({ old: '', new: '', confirm: '' });
   const [loading, setLoading] = useState(false);
@@ -167,29 +207,41 @@ const ChangePasswordModal = ({ isOpen, onClose, username, notify }) => {
   );
 };
 
-// --- App Component (منطق فایل مرجع + تم H&Y) ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت اصلی (App)]
+// این بخش مغز اصلی برنامه است که تمام بخش‌ها را به هم متصل می‌کند.
+// شامل مدیریت State های سراسری، روتینگ و رندرینگ نهایی.
+// ----------------------------------------------------------------------------------------------------
 const App = () => {
+  // ------------------------------------------------------------------------------------------------
+  // [تگ: مدیریت وضعیت (Global State)]
+  // ------------------------------------------------------------------------------------------------
   const [notifyState, setNotifyState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [dialogConfig, setDialogConfig] = useState({ isOpen: false, title: "", message: "", type: "danger", resolve: null });
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [serverStatus, setServerStatus] = useState(false);
-  const [user, setUser] = useState(null);
-  const [globalConfig, setGlobalConfig] = useState(null);
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [exitLoading, setExitLoading] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [showPassModal, setShowPassModal] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard'); // تب فعال فعلی (صفحه‌ای که کاربر می‌بیند)
+  const [serverStatus, setServerStatus] = useState(false); // وضعیت اتصال به سرور (آنلاین/آفلاین)
+  const [user, setUser] = useState(null); // اطلاعات کاربر لاگین شده
+  const [globalConfig, setGlobalConfig] = useState(null); // تنظیمات دریافتی از سرور
+  const [showExitConfirm, setShowExitConfirm] = useState(false); // نمایش مودال خروج
+  const [exitLoading, setExitLoading] = useState(false); // وضعیت لودینگ هنگام خروج
+  const [currentTime, setCurrentTime] = useState(new Date()); // ساعت سیستم
+  const [showPassModal, setShowPassModal] = useState(false); // نمایش مودال تغییر رمز
+  const [userMenuOpen, setUserMenuOpen] = useState(false); // باز/بسته بودن منوی دراپ‌داون کاربر
   
   const toastTimerRef = useRef(null);
   const userMenuRef = useRef(null);
 
+  // بستن منوی کاربر هنگام کلیک در خارج از آن
   useEffect(() => {
     const handleOutside = (e) => { if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false); };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
+  // ------------------------------------------------------------------------------------------------
+  // [تگ: توابع کمکی سراسری]
+  // این توابع از طریق Context به تمام زیرمجموعه‌ها پاس داده می‌شوند.
+  // ------------------------------------------------------------------------------------------------
   const showNotify = useCallback((title, message, type = 'success') => { 
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setNotifyState({ isOpen: true, title, message, type }); 
@@ -199,26 +251,45 @@ const App = () => {
   }, []);
 
   const notifyValue = useMemo(() => ({ show: showNotify }), [showNotify]);
+  
+  // تابع پرسش دیالوگ (Promise-based) که منتظر پاسخ کاربر می‌ماند
   const ask = useCallback((title, message, type="danger") => new Promise((resolve) => setDialogConfig({ isOpen: true, title, message, type, resolve })), []);
   const dialogValue = useMemo(() => ({ ask }), [ask]);
   const closeDialog = (result) => { if (dialogConfig.resolve) dialogConfig.resolve(result); setDialogConfig(prev => ({ ...prev, isOpen: false, resolve: null })); };
 
+  // تابع بررسی سطح دسترسی کاربر (Permission Check)
   const hasPerm = useCallback((key) => {
     if (!user) return false;
-    if (user.role === 'admin' || user.username === 'admin') return true;
+    if (user.role === 'admin' || user.username === 'admin') return true; // ادمین دسترسی کامل دارد
     if (!user.permissions || typeof user.permissions !== 'object') return false;
     return !!user.permissions[key];
   }, [user]);
 
+  // ------------------------------------------------------------------------------------------------
+  // [تگ: اثرات جانبی (Effects)]
+  // ------------------------------------------------------------------------------------------------
+  
+  // ۱. بروزرسانی ساعت سیستم هر ثانیه
   useEffect(() => { const t = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(t); }, []);
+  
+  // ۲. بررسی وضعیت سرور (Heartbeat) هر ۵ ثانیه
   useEffect(() => { 
     const check = () => fetchAPI('/heartbeat', { method: 'POST' }).then(() => setServerStatus(true)).catch(() => setServerStatus(false));
     check(); const i = setInterval(check, 5000); return () => clearInterval(i); 
   }, []);
+  
+  // ۳. دریافت تنظیمات اولیه هنگام لود شدن برنامه
   useEffect(() => { fetchAPI('/settings/config').then(({ok, data}) => { if(ok) setGlobalConfig(data); }); }, []);
+  
+  // ۴. ارسال سیگنال بسته شدن کلاینت به سرور هنگام بستن پنجره
   useEffect(() => { const h = () => fetch(`${API_URL}/client_closed`, { method: 'POST', keepalive: true, body: JSON.stringify({ reason: 'unload' }) }); window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h); }, []);
+  
+  // ۵. رفرش کردن آیکون‌ها هنگام تغییر تب
   useEffect(() => { setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50); }, [activeTab, user, userMenuOpen]);
 
+  // ------------------------------------------------------------------------------------------------
+  // [تگ: توابع خروج]
+  // ------------------------------------------------------------------------------------------------
   const handleExitRequest = () => { setUserMenuOpen(false); setShowExitConfirm(true); };
   const performExit = () => fetchAPI('/exit_app', { method: 'POST' }).finally(() => window.close());
   
@@ -234,6 +305,10 @@ const App = () => {
 
   const handleLogout = () => { setUserMenuOpen(false); setUser(null); setActiveTab('dashboard'); };
 
+  // ------------------------------------------------------------------------------------------------
+  // [تگ: رندر شرطی - صفحه لاگین]
+  // اگر کاربری لاگین نکرده باشد، فقط صفحه لاگین نمایش داده می‌شود.
+  // ------------------------------------------------------------------------------------------------
   if (!user) return (
     <NotificationContext.Provider value={notifyValue}>
       <LoginPage onLogin={setUser} />
@@ -241,19 +316,31 @@ const App = () => {
     </NotificationContext.Provider>
   );
 
+  // اگر تنظیمات هنوز لود نشده باشد، صفحه لودینگ نمایش داده می‌شود
   if (!globalConfig) return <div className="flex h-screen items-center justify-center text-white font-black animate-pulse bg-[#020617]">H&Y SYSTEM INITIALIZING...</div>;
 
+  // ------------------------------------------------------------------------------------------------
+  // [تگ: رندر اصلی برنامه (Layout)]
+  // ساختار اصلی شامل سایدبار، هدر و ناحیه محتوا
+  // ------------------------------------------------------------------------------------------------
   return (
     <NotificationContext.Provider value={notifyValue}>
       <DialogContext.Provider value={dialogValue}>
         <AppBackground />
+        
+        {/* کامپوننت‌های سراسری: تست، دیالوگ، خروج */}
         <NexusToast isOpen={notifyState.isOpen} onClose={() => setNotifyState(p => ({ ...p, isOpen: false }))} title={notifyState.title} message={notifyState.message} type={notifyState.type} />
         <ConfirmDialog isOpen={dialogConfig.isOpen} title={dialogConfig.title} message={dialogConfig.message} type={dialogConfig.type} onConfirm={() => closeDialog(true)} onCancel={() => closeDialog(false)} />
         <ExitDialog isOpen={showExitConfirm} onClose={() => setShowExitConfirm(false)} onConfirm={performExit} onBackupAndExit={performBackupAndExit} title="خروج از سیستم" message="آیا می‌خواهید قبل از خروج، نسخه پشتیبان تهیه شود؟" loading={exitLoading} />
         
         <div className="flex min-h-screen text-gray-300 font-sans relative z-10">
-          {/* Sidebar Design H&Y */}
+          
+          {/* ---------------------------------------------------------------------------------- */}
+          {/* [تگ: سایدبار کناری]                                                                */}
+          {/* منوی ناوبری سمت راست (به دلیل راست‌چین بودن) شامل لوگو و لینک‌های دسترسی سریع      */}
+          {/* ---------------------------------------------------------------------------------- */}
           <aside className="w-72 flex flex-col border-l border-white/5 bg-[#020617]/95 backdrop-blur-3xl shrink-0 sticky top-0 h-screen shadow-2xl">
+            {/* لوگو و وضعیت سرور */}
             <div className="flex flex-col items-center justify-center border-b border-white/5 py-10 relative">
               <img 
                 src="/static/logo.png" 
@@ -267,12 +354,15 @@ const App = () => {
               </div>
             </div>
 
+            {/* لیست منوها */}
             <nav className="flex-1 p-6 space-y-1 overflow-y-auto custom-scroll">
               <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-4 mb-4 flex justify-between"><span>Workspace</span><span className="text-blue-400">{user.username}</span></div>
               
               <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
                 <i data-lucide="layout-grid" className="w-5 h-5"></i> <span className="font-bold">داشبورد</span>
               </button>
+              
+              {/* نمایش منوها بر اساس سطح دسترسی کاربر */}
               {hasPerm('entry') && <button onClick={() => setActiveTab('entry')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'entry' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="package-plus" className="w-5 h-5"></i> <span className="font-bold">ورود قطعه</span></button>}
               {hasPerm('withdraw') && <button onClick={() => setActiveTab('withdraw')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'withdraw' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="arrow-down-circle" className="w-5 h-5"></i> <span className="font-bold">برداشت قطعه</span></button>}
               {hasPerm('inventory') && <button onClick={() => setActiveTab('inventory')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'inventory' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="bar-chart-2" className="w-5 h-5"></i> <span className="font-bold">موجودی و آمار</span></button>}
@@ -283,7 +373,7 @@ const App = () => {
               {hasPerm('users') && <button onClick={() => setActiveTab('users')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'users' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="users" className="w-5 h-5"></i> <span className="font-bold">کاربران</span></button>}
               {hasPerm('management') && <button onClick={() => setActiveTab('management')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'management' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="list-checks" className="w-5 h-5"></i> <span className="font-bold">تنظیمات</span></button>}
               {hasPerm('backup') && <button onClick={() => setActiveTab('backup')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'backup' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="database-backup" className="w-5 h-5"></i> <span className="font-bold">پشتیبان‌گیری</span></button>}
-{hasPerm('server') && <button onClick={() => setActiveTab('server')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'server' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="server" className="w-5 h-5"></i> <span className="font-bold">تنظیمات سرور</span></button>}
+              {hasPerm('server') && <button onClick={() => setActiveTab('server')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'server' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="server" className="w-5 h-5"></i> <span className="font-bold">تنظیمات سرور</span></button>}
               
               <div className="h-px bg-white/5 my-6 mx-4"></div>
 
@@ -298,7 +388,10 @@ const App = () => {
           </aside>
 
           <main className="flex-1 flex flex-col min-w-0 bg-transparent">
-            {/* Header */}
+            {/* ---------------------------------------------------------------------------------- */}
+            {/* [تگ: هدر بالایی]                                                                    */}
+            {/* نوار وضعیت شامل تاریخ، ساعت و منوی پروفایل کاربر                                   */}
+            {/* ---------------------------------------------------------------------------------- */}
             <header className="h-24 border-b border-white/5 flex items-center justify-between px-12 bg-[#020617]/90 backdrop-blur-3xl sticky top-0 z-40">
                 <div className="flex flex-col">
                     <span className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em]">امروز</span>
@@ -311,6 +404,7 @@ const App = () => {
                         <span className="text-2xl font-black text-blue-400 tracking-tighter" dir="ltr">{new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(currentTime)}</span>
                     </div>
                     
+                    {/* منوی پروفایل کاربر */}
                     <div className="relative" ref={userMenuRef}>
                         <button 
                             onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -325,8 +419,10 @@ const App = () => {
                             </div>
                         </button>
 
+                        {/* دراپ‌داون منوی کاربر */}
                         {userMenuOpen && (
                             <div className="absolute top-full left-0 mt-3 w-56 bg-[#0f172a]/95 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {/* گزینه تغییر رمز فقط برای غیر ادمین‌ها */}
                                 {user.role !== 'admin' && (
                                   <button onClick={() => { setShowPassModal(true); setUserMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-blue-500/20 hover:text-white transition-all font-bold">
                                       <i data-lucide="key" className="w-4 h-4 text-blue-400"></i> تغییر گذرواژه
@@ -345,6 +441,10 @@ const App = () => {
                 </div>
             </header>
 
+            {/* ---------------------------------------------------------------------------------- */}
+            {/* [تگ: ناحیه محتوا]                                                                   */}
+            {/* رندر کردن کامپوننت صفحه فعال (Active Tab)                                          */}
+            {/* ---------------------------------------------------------------------------------- */}
             <div className="flex-1 p-10 overflow-y-auto custom-scroll relative">
               <ErrorBoundary>
                 {activeTab === 'dashboard' && <DashboardPage setView={setActiveTab} user={user} hasPerm={hasPerm} />}
@@ -365,11 +465,16 @@ const App = () => {
           </main>
         </div>
 
+        {/* مودال تغییر رمز عبور (فقط برای غیر ادمین‌ها) */}
         {user && user.role !== 'admin' && <ChangePasswordModal isOpen={showPassModal} onClose={() => setShowPassModal(false)} username={user.username} notify={{show: showNotify}} />}
       </DialogContext.Provider>
     </NotificationContext.Provider>
   );
 };
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: ریشه React]
+// اتصال کل اپلیکیشن به المان root در فایل HTML
+// ----------------------------------------------------------------------------------------------------
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);

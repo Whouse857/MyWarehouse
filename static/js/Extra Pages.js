@@ -1,10 +1,27 @@
-// [TAG: PAGE_EXTRAS]
-// صفحات جانبی: تامین‌کنندگان و لاگ‌ها
-// نسخه نهایی: اضافه شدن قابلیت حذف و ویرایش لاگ با اصلاح خودکار انبار
+// ====================================================================================================
+// نسخه: 0.20
+// فایل: Extra Pages.js
+// تهیه کننده: ------
+//
+// توضیحات کلی ماژول:
+// این فایل حاوی صفحات و ابزارهای جانبی اما حیاتی برنامه است.
+// 
+// اجزای اصلی:
+// ۱. ContactsPage: مدیریت لیست مخاطبین و تامین‌کنندگان (CRUD کامل).
+// ۲. LogPage: مشاهده، فیلتر و مدیریت تاریخچه تراکنش‌های انبار (ورود، خروج، ویرایش).
+// ۳. PersianDatePicker: کامپوننت اختصاصی برای انتخاب تاریخ شمسی.
+// ۴. EditLogModal: مودال برای اصلاح مقادیر و دلایل در سوابق ثبت شده.
+//
+// این فایل به صورت مستقل بارگذاری می‌شود و کامپوننت‌های آن به window متصل می‌گردند.
+// ====================================================================================================
 
+// استخراج هوک‌های مورد نیاز از کتابخانه React
 const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-// --- Helper Functions ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: توابع کمکی تبدیل اعداد]
+// توابع برای تبدیل اعداد فارسی به انگلیسی (برای ذخیره در دیتابیس) و برعکس (برای نمایش).
+// ----------------------------------------------------------------------------------------------------
 const toEnglishDigits = (str) => {
     if (!str) return str;
     return String(str).replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/\//g, '/');
@@ -15,7 +32,11 @@ const toPersianDigits = (str) => {
     return String(str).replace(/[0-9]/g, d => "۰۱۲۳۴۵۶۷۸۹"[d]);
 };
 
-// تابع کمکی برای کد اختصاصی در لاگ
+// ----------------------------------------------------------------------------------------------------
+// [تگ: تولید کد قطعه در لاگ]
+// تابع اختصاصی برای نمایش کد قطعه در لیست تاریخچه.
+// اگر کد در لاگ ذخیره شده باشد از آن استفاده می‌کند، وگرنه به صورت پویا می‌سازد.
+// ----------------------------------------------------------------------------------------------------
 const getPartCodeLog = (l, config) => {
     if (!l) return "---";
     // اولویت با کد ذخیره شده در دیتابیس است
@@ -27,17 +48,23 @@ const getPartCodeLog = (l, config) => {
     return `${prefix}${numeric}`;
 };
 
-// لیست ماه‌های شمسی
+// لیست ماه‌های شمسی برای استفاده در تقویم
 const persianMonths = [
     "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
     "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
 ];
 
-// --- مودال جدید برای ویرایش لاگ ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: مودال ویرایش لاگ]
+// پنجره‌ای برای اصلاح یک رکورد در تاریخچه.
+// کاربرد: زمانی که کاربر اشتباهاً تعدادی را وارد یا خارج کرده و می‌خواهد اصلاح کند.
+// این تغییرات باعث اصلاح خودکار موجودی انبار نیز می‌شود.
+// ----------------------------------------------------------------------------------------------------
 const EditLogModal = ({ isOpen, onClose, onSave, log }) => {
     const [qty, setQty] = useState(0);
     const [reason, setReason] = useState("");
 
+    // مقداردهی اولیه فیلدها هنگام باز شدن مودال با اطلاعات لاگ انتخاب شده
     useEffect(() => {
         if (log) {
             setQty(log.quantity_added);
@@ -83,12 +110,16 @@ const EditLogModal = ({ isOpen, onClose, onSave, log }) => {
     );
 };
 
-// --- Custom Persian Date Picker Component ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: انتخابگر تاریخ شمسی]
+// کامپوننت انتخاب تاریخ اختصاصی که با دراپ‌داون‌های سال، ماه و روز کار می‌کند.
+// ----------------------------------------------------------------------------------------------------
 const PersianDatePicker = ({ label, value, onChange }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [tempDate, setTempDate] = useState({ y: 1403, m: 1, d: 1 });
     const popupRef = useRef(null);
 
+    // بستن پاپ‌آپ با کلیک بیرون
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (popupRef.current && !popupRef.current.contains(event.target)) {
@@ -99,6 +130,7 @@ const PersianDatePicker = ({ label, value, onChange }) => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    // تجزیه تاریخ فعلی (ورودی) برای نمایش در دراپ‌داون‌ها
     useEffect(() => {
         if (value) {
             const parts = toEnglishDigits(value).split('/');
@@ -113,6 +145,7 @@ const PersianDatePicker = ({ label, value, onChange }) => {
         }
     }, [value, isOpen]);
 
+    // تایید و ساخت رشته تاریخ نهایی (فرمت: yyyy/mm/dd)
     const handleConfirm = () => {
         const mStr = tempDate.m.toString().padStart(2, '0');
         const dStr = tempDate.d.toString().padStart(2, '0');
@@ -122,6 +155,8 @@ const PersianDatePicker = ({ label, value, onChange }) => {
     };
 
     const handleClear = () => { onChange(""); setIsOpen(false); };
+    
+    // تولید آرایه‌های سال و روز
     const years = Array.from({ length: 21 }, (_, i) => 1395 + i);
     const days = Array.from({ length: 31 }, (_, i) => 1 + i);
 
@@ -146,7 +181,11 @@ const PersianDatePicker = ({ label, value, onChange }) => {
     );
 };
 
-// --- Contacts Page ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: صفحه مدیریت مخاطبین (ContactsPage)]
+// این صفحه برای مدیریت لیست فروشندگان و تامین‌کنندگان استفاده می‌شود.
+// شامل فرم افزودن/ویرایش و لیست مخاطبین با قابلیت جستجو.
+// ----------------------------------------------------------------------------------------------------
 const ContactsPage = ({ serverStatus }) => {
     const [contacts, setContacts] = useState([]);
     const [newContact, setNewContact] = useState({ id: null, name: '', phone: '', mobile: '', fax: '', website: '', email: '', address: '', notes: '' });
@@ -157,9 +196,11 @@ const ContactsPage = ({ serverStatus }) => {
     const notify = useNotify();
     const dialog = useDialog();
 
+    // بارگذاری لیست مخاطبین از سرور
     const loadContacts = useCallback(async () => { try { const { ok, data } = await fetchAPI('/contacts'); if (ok) setContacts(data); } catch (e) {} }, []);
     useEffect(() => { loadContacts(); }, [loadContacts]);
 
+    // فیلتر کردن لیست بر اساس جستجو
     const filteredContacts = useMemo(() => {
         if (!searchTerm) return contacts;
         const lower = searchTerm.toLowerCase();
@@ -168,6 +209,7 @@ const ContactsPage = ({ serverStatus }) => {
 
     useLucide([contacts, newContact.id, errors, searchTerm, filteredContacts.length]);
 
+    // کپی شماره تماس در کلیپ‌بورد با کلیک
     const copyToClipboard = (e, text) => {
         if (!text) return;
         e.stopPropagation(); 
@@ -176,6 +218,7 @@ const ContactsPage = ({ serverStatus }) => {
         setTimeout(() => setCopyFeedback(null), 1500);
     };
 
+    // اعتبارسنجی فرمت شماره تلفن
     const validatePhoneFormat = (num) => {
         if (!num) return true;
         if (!num.startsWith('0')) return false;
@@ -194,6 +237,7 @@ const ContactsPage = ({ serverStatus }) => {
         }
     };
 
+    // ذخیره مخاطب (جدید یا ویرایش)
     const handleSave = async () => { 
         const newErrors = {};
         let isValid = true;
@@ -201,6 +245,8 @@ const ContactsPage = ({ serverStatus }) => {
         if (!newContact.address.trim()) { newErrors.address = true; isValid = false; }
         const hasPhone = newContact.phone && newContact.phone.trim();
         const hasMobile = newContact.mobile && newContact.mobile.trim();
+        
+        // اعتبارسنجی: حداقل یک شماره تماس لازم است
         if (!hasPhone && !hasMobile) { newErrors.phone = true; newErrors.mobile = true; isValid = false; notify.show('خطا', "حداقل یک شماره تماس الزامی است", 'error'); } 
         else {
             if (hasPhone && !validatePhoneFormat(newContact.phone)) { newErrors.phone = true; isValid = false; notify.show('خطا', "فرمت تلفن اشتباه است", 'error'); }
@@ -208,6 +254,7 @@ const ContactsPage = ({ serverStatus }) => {
         }
         setErrors(newErrors);
         if (!isValid) return;
+        
         try { const { ok } = await fetchAPI('/contacts/save', { method: 'POST', body: newContact }); if (ok) { loadContacts(); setNewContact({id:null, name:'', phone:'', mobile:'', fax:'', website:'', email:'', address: '', notes:''}); notify.show('موفقیت', "اطلاعات ذخیره شد.", 'success'); } } catch (e) { notify.show('خطا', "مشکل شبکه", 'error'); } 
     };
 
@@ -215,8 +262,10 @@ const ContactsPage = ({ serverStatus }) => {
     const handleEdit = (c) => { setNewContact(c); setErrors({}); };
     const preventNonNumeric = (e) => { if (!/[0-9]/.test(e.key) && e.key !== "Backspace" && e.key !== "Delete" && e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Tab") { e.preventDefault(); } };
 
+    // رندر بخش رابط کاربری مدیریت مخاطبین
     return (
         <div className="flex-1 p-6 overflow-hidden flex flex-col h-full relative">
+            {/* نمایش فیدبک کپی شدن */}
             {copyFeedback && (
                 <div className="fixed z-[9999] pointer-events-none bg-nexus-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg border border-white/20 animate-in fade-in zoom-in duration-200 flex items-center gap-1" style={{ top: copyFeedback.y + 15, left: copyFeedback.x + 15 }}>
                     <i data-lucide="check" className="w-3 h-3"></i> کپی شد!
@@ -260,6 +309,7 @@ const ContactsPage = ({ serverStatus }) => {
                         })}
                     </div>
                 </div>
+                {/* فرم افزودن/ویرایش مخاطب */}
                 <div className="xl:col-span-4 h-full overflow-y-auto custom-scroll">
                     <div className="glass-panel border border-white/10 rounded-2xl p-5 shadow-2xl relative bg-gradient-to-b from-white/5 to-[#020617]">
                         <div className="flex justify-between items-center mb-6 pb-4 border-b border-white/5 sticky top-0 bg-[#0f172a]/95 backdrop-blur z-10 -mx-5 px-5 -mt-5 pt-5 rounded-t-2xl"><h3 className="text-lg font-bold text-white flex items-center gap-2">{newContact.id ? <><i data-lucide="user-cog" className="text-nexus-accent w-5 h-5"></i> <span className="text-orange-100">ویرایش مخاطب</span></> : <><i data-lucide="user-plus" className="text-emerald-400 w-5 h-5"></i> <span className="text-emerald-100">افزودن مخاطب</span></>}</h3>{newContact.id && <button onClick={() => { setNewContact({id:null, name:'', phone:'', mobile:'', fax:'', website:'', email:'', address: '', notes:''}); setErrors({}); }} className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-xs font-bold text-gray-400 hover:text-white transition">انصراف</button>}</div>
@@ -282,7 +332,12 @@ const ContactsPage = ({ serverStatus }) => {
     );
 };
 
-// --- Log Page ---
+// ----------------------------------------------------------------------------------------------------
+// [تگ: صفحه تاریخچه (LogPage)]
+// این صفحه لیست تمام عملیات‌های انجام شده در انبار (ورود، خروج، ویرایش، حذف) را نمایش می‌دهد.
+// قابلیت فیلتر پیشرفته بر اساس تاریخ، کاربر، نوع عملیات و متن جستجو دارد.
+// همچنین امکان ویرایش و حذف رکوردها با تاثیر مستقیم بر موجودی انبار وجود دارد.
+// ----------------------------------------------------------------------------------------------------
 const LogPage = () => {
     const [logList, setLogList] = useState([]);
     const [config, setConfig] = useState(null);
@@ -293,6 +348,7 @@ const LogPage = () => {
     const notify = useNotify();
     const dialog = useDialog();
 
+    // دریافت لیست لاگ‌ها و تنظیمات از سرور
     const loadLogs = useCallback(async () => { 
         setLoading(true);
         try {
@@ -308,7 +364,11 @@ const LogPage = () => {
 
     useEffect(() => { loadLogs(); }, [loadLogs]);
     
-    // تابع حذف لاگ با تایید و اصلاح خودکار انبار
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: حذف لاگ]
+    // این تابع لاگ را حذف می‌کند و به صورت خودکار تغییرات آن را روی موجودی انبار "برمی‌گرداند".
+    // مثال: اگر لاگی مربوط به ورود ۱۰ عدد باشد، حذف آن باعث کسر ۱۰ عدد از موجودی می‌شود.
+    // ------------------------------------------------------------------------------------------------
     const handleDeleteLog = async (log) => {
         const text = `آیا از حذف این تراکنش و اصلاح "معکوس" موجودی انبار اطمینان دارید؟\nمقدار: ${log.quantity_added} عدد`;
         if (await dialog.ask("حذف و واگردانی تراکنش", text, "danger")) {
@@ -322,7 +382,11 @@ const LogPage = () => {
         }
     };
 
-    // تابع ذخیره ویرایش لاگ
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: ویرایش لاگ]
+    // ارسال درخواست آپدیت لاگ به سرور. سرور به صورت خودکار اختلاف موجودی جدید و قدیم را محاسبه
+    // و روی قطعه اعمال می‌کند.
+    // ------------------------------------------------------------------------------------------------
     const handleUpdateLog = async (log_id, new_qty, new_reason) => {
         try {
             const { ok } = await fetchAPI('/log/update', { 
@@ -337,18 +401,28 @@ const LogPage = () => {
         } catch (e) { notify.show('خطا', 'مشکل در ارتباط با سرور', 'error'); }
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: فیلترینگ لاگ‌ها]
+    // فیلتر کردن سمت کلاینت بر اساس معیارهای مختلف (تاریخ، متن، کاربر و ...).
+    // ------------------------------------------------------------------------------------------------
     const filteredLogs = useMemo(() => {
         return logList.filter(l => {
             const logDateObj = new Date(l.timestamp);
             const logShamsi = new Intl.DateTimeFormat('fa-IR-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(logDateObj); 
+            
+            // فیلتر تاریخ
             if (filters.startDate && logShamsi < filters.startDate) return false;
             if (filters.endDate && logShamsi > filters.endDate) return false;
+            
+            // فیلتر جستجوی عمومی (در تمام فیلدها)
             const terms = filters.general ? toEnglishDigits(filters.general.toLowerCase()).trim().split(/\s+/) : [];
-            // این خط در تابع filteredLogs قرار دارد
             const searchableText = toEnglishDigits(`${l.val || ''} ${l.username || ''} ${l.operation_type || ''} ${l.reason || ''} ${l.invoice_number || ''} ${getPartCodeLog(l, config)}`.toLowerCase());
             const generalMatch = terms.length === 0 || terms.every(term => searchableText.includes(term));
+            
+            // فیلتر کاربر و نوع عملیات
             const userMatch = !filters.user || (l.username && l.username.toLowerCase().includes(filters.user.toLowerCase()));
             const opMatch = !filters.operation || (l.operation_type && l.operation_type.toLowerCase().includes(filters.operation.toLowerCase()));
+            
             return generalMatch && userMatch && opMatch;
         });
     }, [logList, filters, config]);
@@ -359,6 +433,7 @@ const LogPage = () => {
 
     return (
         <div className="flex-1 p-6 h-full flex flex-col">
+            {/* مودال ویرایش */}
             <EditLogModal 
                 isOpen={editModal.open} 
                 log={editModal.log} 
@@ -366,6 +441,7 @@ const LogPage = () => {
                 onSave={handleUpdateLog}
             />
 
+            {/* هدر و فیلترها */}
             <header className="mb-6 flex flex-col gap-4">
                 <div className="flex justify-between items-center"><h2 className="text-2xl font-bold text-white flex items-center gap-3"><i data-lucide="history" className="w-6 h-6 text-nexus-primary"></i>تاریخچه تراکنش‌های انبار</h2><span className="text-xs text-gray-400 bg-white/5 px-3 py-1 rounded-full whitespace-nowrap">{filteredLogs.length} تراکنش</span></div>
                 <div className="bg-white/5 p-3 rounded-xl border border-white/5 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
@@ -378,11 +454,14 @@ const LogPage = () => {
                     </div>
                 </div>
             </header>
+            
+            {/* لیست تراکنش‌ها */}
             <div className="flex-1 overflow-y-auto custom-scroll pr-2 relative">
                 <div className="absolute top-0 right-[27px] w-0.5 h-full bg-white/10 z-0"></div>
                 <div className="space-y-6 relative z-10 pb-10">
                     {filteredLogs.length === 0 ? (<div className="text-center text-gray-500 py-20 bg-white/5 rounded-2xl border border-dashed border-white/10"><i data-lucide="search-x" className="w-12 h-12 mx-auto mb-3 opacity-50"></i><p>موردی یافت نشد.</p></div>) : (
                         filteredLogs.map(l => {
+                            // تعیین استایل بر اساس نوع عملیات
                             const isEntry = l.quantity_added > 0; const isDelete = l.operation_type && l.operation_type.includes('DELETE'); const isEdit = l.operation_type && l.operation_type.includes('UPDATE');
                             let colorClass = '', iconName = '', borderColor = '', titleText = '';
                             if (isDelete) { colorClass = 'text-gray-400 bg-gray-500/10'; borderColor = 'border-gray-600'; iconName = 'trash-2'; titleText = 'حذف قطعه'; } 
@@ -438,5 +517,9 @@ const LogPage = () => {
     );
 };
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: اتصال به فضای جهانی]
+// اتصال کامپوننت‌های اصلی به window جهت دسترسی در سایر اسکریپت‌ها.
+// ----------------------------------------------------------------------------------------------------
 window.ContactsPage = ContactsPage;
 window.LogPage = LogPage;

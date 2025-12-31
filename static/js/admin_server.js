@@ -1,29 +1,57 @@
-// [TAG: MODULE_ADMIN_SERVER]
-// ماژول تنظیمات هسته و سرور دیتابیس - اختصاصی برای مدیریت MySQL (H&Y)
-// این فایل به صورت مجزا طراحی شده تا به کدهای قبلی شما آسیبی نرسد.
+// ====================================================================================================
+// نسخه: 0.20
+// فایل: admin_server.js
+// تهیه کننده: ------
+//
+// توضیحات کلی ماژول:
+// این فایل حاوی کامپوننت `ServerSettingsPage` است که رابط کاربری تنظیمات هسته سرور را فراهم می‌کند.
+// 
+// وظایف اصلی:
+// ۱. نمایش و ویرایش اطلاعات اتصال به دیتابیس MySQL (آدرس، پورت، نام کاربری، رمز عبور).
+// ۲. تنظیم مسیر فایل‌های اجرایی حیاتی برای بک‌آپ و ریستور (mysqldump.exe و mysql.exe).
+// ۳. ذخیره تنظیمات در فایل `server_config.json` سمت سرور.
+// ۴. نمایش راهنما و هشدارهای امنیتی برای جلوگیری از قطع اتصال اشتباه.
+//
+// نکته مهم: این تنظیمات مستقیماً بر عملکرد کل سیستم و ارتباط با داده‌ها تاثیر می‌گذارد.
+// ====================================================================================================
 
+// استخراج هوک‌های مورد نیاز از کتابخانه React
 const { useState, useEffect } = React;
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت تنظیمات سرور]
+// ----------------------------------------------------------------------------------------------------
 const ServerSettingsPage = ({ serverStatus }) => {
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: مدیریت وضعیت (State)]
+    // config: آبجکت حاوی تمام پارامترهای تنظیمات. مقادیر پیش‌فرض برای راهنمایی کاربر قرار داده شده‌اند.
+    // showPass: وضعیت نمایش یا مخفی بودن فیلد رمز عبور.
+    // loading: وضعیت در حال پردازش بودن درخواست‌ها.
+    // ------------------------------------------------------------------------------------------------
     // خط ۴۴ تا ۴۸ فایل admin_server.js را با این جایگزین کنید:
     const [config, setConfig] = useState({
         host: '', user: '', password: '', database: '', port: 3306,
-        // اینجا آدرس‌های پیش‌فرض را می‌نویسیم تا کاربر ببیند
+        // اینجا آدرس‌های پیش‌فرض را می‌نویسیم تا کاربر ببیند و الگوی صحیح را بداند
         mysqldump_path: 'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysqldump.exe', 
         mysql_client_path: 'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe'
     });
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
     
-    // استفاده از توابع کمکی که در Core Logic & Utils تعریف کرده‌ای
+    // استفاده از توابع کمکی سراسری برای اعلان و دیالوگ (تعریف شده در Main Application)
     const notify = useNotify();
     const dialog = useDialog();
 
-    // دریافت تنظیمات فعلی از API که در routes.py تعریف کردیم
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: دریافت تنظیمات]
+    // دریافت تنظیمات فعلی ذخیره شده در فایل کانفیگ سرور هنگام لود صفحه.
+    // ------------------------------------------------------------------------------------------------
     useEffect(() => {
         const loadSettings = async () => {
             try {
+                // فراخوانی API اختصاصی تنظیمات سرور
                 const { ok, data } = await fetchAPI('/admin/server-settings');
+                // ترکیب داده‌های دریافتی با مقادیر پیش‌فرض استیت
                 if (ok) setConfig(prev => ({ ...prev, ...data }));
             } catch (e) {
                 console.error("Error loading server settings", e);
@@ -32,11 +60,16 @@ const ServerSettingsPage = ({ serverStatus }) => {
         loadSettings();
     }, []);
 
-    // رفرش آیکون‌های Lucide
+    // رفرش آیکون‌های Lucide در صورت تغییر وضعیت لودینگ
     useEffect(() => {
         if (window.lucide) window.lucide.createIcons();
     }, [loading]);
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: ذخیره تنظیمات]
+    // ارسال تنظیمات جدید به سرور برای ذخیره‌سازی.
+    // شامل نمایش هشدار جدی به کاربر، زیرا تنظیمات غلط باعث از کار افتادن برنامه می‌شود.
+    // ------------------------------------------------------------------------------------------------
     const handleSave = async () => {
         const confirmed = await dialog.ask(
             "تغییر تنظیمات سرور", 
@@ -64,6 +97,10 @@ const ServerSettingsPage = ({ serverStatus }) => {
         }
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: رندر رابط کاربری]
+    // ساختار فرم تنظیمات شامل کارت‌های شیشه‌ای، اینپوت‌ها و توضیحات راهنما.
+    // ------------------------------------------------------------------------------------------------
     return (
         <div className="flex-1 p-8 overflow-y-auto custom-scroll" dir="rtl">
             <header className="mb-8 pb-6 border-b border-white/5">
@@ -75,11 +112,12 @@ const ServerSettingsPage = ({ serverStatus }) => {
             </header>
 
             <div className="max-w-2xl mx-auto glass-panel p-8 rounded-[2.5rem] border border-white/10 shadow-2xl relative bg-[#0f172a]/90 overflow-hidden">
-                {/* دکوراسیون پس‌زمینه کارت */}
+                {/* دکوراسیون گرافیکی بالای کارت */}
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
                 
+                {/* بخش اول: اطلاعات اتصال به دیتابیس */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 relative z-10">
-                    {/* استفاده از NexusInput که در UI Components تعریف کردی */}
+                    {/* استفاده از کامپوننت NexusInput برای ظاهر یکپارچه */}
                     <NexusInput 
                         label="آدرس سرور (Host)" 
                         value={config.host} 
@@ -134,6 +172,7 @@ const ServerSettingsPage = ({ serverStatus }) => {
                     </div>
                 </div>
 
+                {/* بخش دوم: تنظیمات مسیر فایل‌های اجرایی (برای بک‌آپ/ریستور) */}
                 <div className="glass-panel p-6 rounded-[2rem] border border-white/10 shadow-2xl relative bg-[#0f172a]/90">
                     <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="folder-cog" className="w-5 h-5 text-orange-400"></i>مسیر فایل‌های اجرایی (Binaries)</h3>
                     <div className="space-y-4">
@@ -162,6 +201,7 @@ const ServerSettingsPage = ({ serverStatus }) => {
                     </div>
                 </div>
 
+                {/* راهنمای انتهایی */}
                 <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-2xl flex items-start gap-4 mb-8">
                     <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400">
                         <i data-lucide="info" className="w-5 h-5"></i>
@@ -174,6 +214,7 @@ const ServerSettingsPage = ({ serverStatus }) => {
                     </div>
                 </div>
 
+                {/* دکمه ذخیره نهایی */}
                 <button 
                     onClick={handleSave} 
                     disabled={loading || !serverStatus}
@@ -188,7 +229,7 @@ const ServerSettingsPage = ({ serverStatus }) => {
                 </button>
             </div>
 
-            {/* لوگوی تزئینی در انتهای صفحه */}
+            {/* لوگوی تزئینی پایین صفحه */}
             <div className="flex justify-center mt-12 opacity-10 grayscale invert pointer-events-none">
                 <img src="/static/logo.png" alt="" className="h-12 w-auto" />
             </div>
@@ -196,5 +237,8 @@ const ServerSettingsPage = ({ serverStatus }) => {
     );
 };
 
-// معرفی کامپوننت به شیء window برای دسترسی در فایل‌های دیگر
+// ----------------------------------------------------------------------------------------------------
+// [تگ: اتصال به فضای جهانی]
+// اتصال کامپوننت به شیء window جهت دسترسی در سایر فایل‌ها بدون نیاز به ایمپورت ماژولار.
+// ----------------------------------------------------------------------------------------------------
 window.ServerSettingsPage = ServerSettingsPage;

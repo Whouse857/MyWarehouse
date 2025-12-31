@@ -1,7 +1,23 @@
-// [TAG: PAGE_INVENTORY]
-// داشبورد پیشرفته تحلیل و آمار انبار نکسوس
-// نسخه اصلاح شده: نمایش کد 12 کاراکتری اختصاصی در آمار و لیست پرینت
+// ====================================================================================================
+// نسخه: 0.20
+// فایل: inventory.js
+// تهیه کننده: ------
+//
+// توضیحات کلی ماژول:
+// این فایل مسئول نمایش داشبورد تحلیلی و آماری انبار (Inventory Dashboard) است.
+// 
+// وظایف اصلی:
+// ۱. نمایش کارت‌های KPI (شاخص‌های کلیدی عملکرد) مانند ارزش کل انبار، تعداد قطعات و امتیاز سلامت.
+// ۲. نمایش نمودارها و جداول تفکیکی برای دسته‌بندی‌های مختلف (مقاومت، خازن و ...).
+// ۳. شناسایی و گزارش قطعاتی که موجودی آن‌ها از حد حداقل (Min Qty) کمتر شده است (Shortages).
+// ۴. قابلیت چاپ لیست خرید برای قطعات دارای کسری.
+// ۵. محاسبه ارزش دلاری و ریالی کل موجودی بر اساس نرخ روز.
+// ====================================================================================================
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: توابع فرمت‌دهی اعداد]
+// توابع کمکی برای نمایش زیبای اعداد با جداکننده هزارگان و اعشار.
+// ----------------------------------------------------------------------------------------------------
 const formatDecimal = (num) => {
     if (num === undefined || num === null || isNaN(num)) return '0.00';
     return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -12,7 +28,11 @@ const formatInteger = (num) => {
     return Number(num).toLocaleString('en-US');
 };
 
-// تابع تولید کد اختصاصی 12 کاراکتری
+// ----------------------------------------------------------------------------------------------------
+// [تگ: تولید کد قطعه در آمار]
+// مشابه تابع موجود در صفحه ورود، این تابع کد ۱۲ رقمی قطعه را برای نمایش در لیست‌های آماری تولید می‌کند.
+// اگر کد در دیتابیس باشد از آن استفاده می‌کند، وگرنه به صورت پویا (Prefix + ID) می‌سازد.
+// ----------------------------------------------------------------------------------------------------
 const getPartCodeInv = (item, config) => {
     if (!item) return "---";
     // اولویت با کد اختصاصی ذخیره شده در دیتابیس (بسیار مهم)
@@ -24,12 +44,19 @@ const getPartCodeInv = (item, config) => {
     return `${prefix}${numeric}`;
 };
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت کارت KPI]
+// کامپوننت نمایشی برای کارت‌های بالای داشبورد (مثل ارزش کل، تعداد کل و ...).
+// دارای انیمیشن ورود و افکت‌های نوری (Glow Effect) در پس‌زمینه.
+// ----------------------------------------------------------------------------------------------------
 const KPICard = ({ title, value, subtitle, icon, color, delay = 0 }) => (
     <div 
         className={`glass-panel p-5 rounded-2xl relative overflow-hidden group hover:-translate-y-1 transition-all duration-500 animate-scale-in border border-white/5 hover:border-${color}-500/30`} 
         style={{ animationDelay: `${delay}ms` }}
     >
+        {/* افکت نوری پس‌زمینه */}
         <div className={`absolute -top-4 -right-4 w-24 h-24 bg-${color}-500/10 rounded-full blur-2xl group-hover:bg-${color}-500/20 transition-all duration-700`}></div>
+        
         <div className="relative z-10 flex justify-between items-start">
             <div>
                 <p className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mb-1">{title}</p>
@@ -38,6 +65,7 @@ const KPICard = ({ title, value, subtitle, icon, color, delay = 0 }) => (
                 </h3>
                 <p className="text-[10px] text-gray-500 mt-2 truncate max-w-[140px]">{subtitle}</p>
             </div>
+            {/* آیکون کارت */}
             <div className={`w-10 h-10 rounded-xl bg-gradient-to-br from-${color}-500/20 to-transparent flex items-center justify-center text-${color}-400 shadow-lg`}>
                 <i data-lucide={icon} className="w-5 h-5"></i>
             </div>
@@ -45,6 +73,10 @@ const KPICard = ({ title, value, subtitle, icon, color, delay = 0 }) => (
     </div>
 );
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت لینک‌های خرید]
+// نمایش لیست لینک‌های خرید آنلاین به صورت دکمه‌های کوچک در جدول کسری‌ها.
+// ----------------------------------------------------------------------------------------------------
 const PurchaseLinks = ({ links }) => {
     if (!links || links.length === 0) return <span className="text-[10px] text-gray-600">-</span>;
 
@@ -67,13 +99,26 @@ const PurchaseLinks = ({ links }) => {
     );
 };
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت اصلی صفحه موجودی]
+// ----------------------------------------------------------------------------------------------------
 const InventoryPage = () => {
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: وضعیت‌های کامپوننت]
+    // stats: داده‌های آماری دریافت‌شده از سرور (شامل مجموع‌ها، دسته‌بندی‌ها و لیست کسری).
+    // config: تنظیمات سیستم (برای خواندن پیشوند کدها و نام دسته‌ها).
+    // activeTab: تب فعال فعلی (نمای کلی، دسته‌بندی‌ها، کسری‌ها).
+    // ------------------------------------------------------------------------------------------------
     const [stats, setStats] = React.useState(null);
     const [config, setConfig] = React.useState(null);
     const [loading, setLoading] = React.useState(true);
     const [activeTab, setActiveTab] = React.useState('overview');
     const notify = useNotify();
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: دریافت اطلاعات]
+    // فراخوانی موازی API آمار (/inventory/stats) و تنظیمات (/settings/config).
+    // ------------------------------------------------------------------------------------------------
     const loadStats = React.useCallback(async () => {
         setLoading(true);
         try {
@@ -93,10 +138,16 @@ const InventoryPage = () => {
 
     React.useEffect(() => { loadStats(); }, [loadStats]);
     
+    // رندر مجدد آیکون‌ها هنگام تغییر تب یا دریافت داده جدید
     React.useEffect(() => {
         if (window.lucide) window.lucide.createIcons();
     }, [stats, activeTab]);
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: چاپ لیست کسری]
+    // ایجاد یک پنجره جدید مرورگر، تولید HTML مخصوص پرینت و باز کردن دیالوگ چاپ سیستم.
+    // این بخش یک جدول تمیز و ساده (سیاه و سفید) برای ارائه به واحد خرید تولید می‌کند.
+    // ------------------------------------------------------------------------------------------------
     const handlePrintShortages = () => {
         if (!stats || !stats.shortages || stats.shortages.length === 0) return;
         const printWindow = window.open('', '_blank');
@@ -142,6 +193,7 @@ const InventoryPage = () => {
         `;
 
         stats.shortages.forEach((item, index) => {
+            // ترکیب مشخصات فنی در یک رشته برای چاپ
             const specs = [
                 item.type,
                 item.watt ? item.watt : null,
@@ -170,6 +222,10 @@ const InventoryPage = () => {
         printWindow.document.close();
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: حالت بارگذاری]
+    // نمایش اسپینر در زمانی که داده‌ها هنوز از سرور دریافت نشده‌اند.
+    // ------------------------------------------------------------------------------------------------
     if (loading) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center h-full gap-4">
@@ -184,17 +240,30 @@ const InventoryPage = () => {
 
     if (!stats) return null;
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: محاسبات آماری سمت کلاینت]
+    // محاسبه متغیرهای کمکی برای نمایش در داشبورد (مثل امتیاز سلامت و بیشترین دسته‌بندی).
+    // ------------------------------------------------------------------------------------------------
     const totalItems = stats.total_items || 0;
     const totalQty = stats.total_quantity || 0;
     const totalCategories = Object.keys(stats.categories).length;
+    // محاسبه امتیاز سلامت: نسبت قطعات موجود به کل قطعات (هرچه کسری کمتر، امتیاز بالاتر)
     const healthScore = totalItems > 0 ? Math.round(((totalItems - stats.shortages.length) / totalItems) * 100) : 100;
+    
+    // پیدا کردن دسته‌ای که بیشترین ارزش ریالی را دارد
     const maxCategoryVal = Math.max(...Object.values(stats.categories).map(c => c.value)) || 1;
     let topCategory = "---";
     Object.entries(stats.categories).forEach(([name, data]) => { if (data.value === maxCategoryVal) topCategory = name; });
+    
     const avgPrice = totalQty > 0 ? (stats.total_value_toman / totalQty) : 0;
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: رندر رابط کاربری]
+    // نمایش تب‌ها، کارت‌ها و جداول بر اساس تب انتخاب شده.
+    // ------------------------------------------------------------------------------------------------
     return (
         <div className="flex-1 p-6 overflow-y-auto custom-scroll h-full">
+            {/* هدر صفحه: عنوان و تب‌ها */}
             <header className="mb-8 flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
                 <div>
                     <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
@@ -222,11 +291,15 @@ const InventoryPage = () => {
                 </div>
             </header>
 
+            {/* محتوای تب ۱: نمای کلی (Overview) */}
             {activeTab === 'overview' && (
                 <div className="space-y-6 animate-in">
+                    {/* ردیف اول: کارت‌های KPI */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <KPICard title="ارزش کل انبار (تومان)" value={formatDecimal(stats.total_value_toman)} subtitle="محاسبه با نرخ روز" icon="wallet" color="blue" delay={0} />
                         <KPICard title="ارزش دلاری کل انبار" value={`$${formatDecimal(stats.total_value_usd_live)}`} subtitle="مجموع ارزش دلاری قطعات" icon="globe" color="emerald" delay={100} />
+                        
+                        {/* کارت خلاصه موجودی */}
                         <div className="glass-panel p-4 rounded-2xl relative overflow-hidden border border-white/5 hover:border-purple-500/30 transition-all duration-500 animate-scale-in" style={{ animationDelay: '200ms' }}>
                             <div className="absolute -top-4 -right-4 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl"></div>
                             <div className="relative z-10 flex flex-col h-full justify-between">
@@ -241,8 +314,11 @@ const InventoryPage = () => {
                                 </div>
                             </div>
                         </div>
+                        
                         <KPICard title="امتیاز سلامت انبار" value={`${healthScore}%`} subtitle={`${stats.shortages.length} قلم کسری موجودی`} icon="activity" color={healthScore > 80 ? "emerald" : healthScore > 50 ? "orange" : "rose"} delay={300} />
                     </div>
+
+                    {/* ردیف دوم: نمودار میله‌ای و خلاصه وضعیت */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 glass-panel p-6 rounded-2xl border border-white/5">
                             <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><i data-lucide="bar-chart-horizontal" className="w-5 h-5 text-nexus-accent"></i>ترکیب سرمایه</h3>
@@ -271,6 +347,7 @@ const InventoryPage = () => {
                 </div>
             )}
 
+            {/* محتوای تب ۲: جدول کامل دسته‌بندی‌ها */}
             {activeTab === 'categories' && (
                 <div className="glass-panel p-6 rounded-2xl border border-white/5 animate-in">
                     <h3 className="text-lg font-bold text-white mb-6">جزئیات کامل دسته‌بندی‌ها</h3>
@@ -298,6 +375,7 @@ const InventoryPage = () => {
                 </div>
             )}
 
+            {/* محتوای تب ۳: لیست کسری موجودی */}
             {activeTab === 'shortages' && (
                 <div className="animate-in">
                     {stats.shortages.length === 0 ? (
@@ -360,4 +438,7 @@ const InventoryPage = () => {
     );
 };
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: اتصال به فضای جهانی]
+// ----------------------------------------------------------------------------------------------------
 window.InventoryPage = InventoryPage;
