@@ -12,6 +12,7 @@
 import time
 import json
 import os
+import re
 from datetime import datetime
 from database import get_db_connection
 
@@ -55,9 +56,22 @@ def fetch_daily_usd_price():
             response = requests.get(url, headers=headers, timeout=3)
             
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                # یافتن المان حاوی قیمت در ساختار HTML وب‌سایت
-                price_span = soup.find("span", {"data-col": "info.last_trade.prc"})
+                
+                # --- شروع کد جایگزین شده (نسخه اصلاح شده) ---
+                # تلاش اول: پیدا کردن قیمت با جستجوی هوشمند (Regex)
+                match = re.search(r'price_dollar_rl.*?(\d{1,3}(?:,\d{3})+)', response.text, re.DOTALL | re.IGNORECASE)
+                
+                class MockElement:
+                    def __init__(self, text): self.text = text
+
+                if match:
+                    # ساخت متغیر price_span به صورت مصنوعی تا کدهای پایین خطا ندهند
+                    price_span = MockElement(match.group(1))
+                else:
+                    # تلاش دوم: روش قدیمی
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    price_span = soup.find("span", {"data-col": "info.last_trade.prc"})
+                # --- پایان کد جایگزین شده ---
                 if price_span:
                     raw_price = price_span.text.replace(',', '')
                     price = float(raw_price) / 10 # تبدیل ریال به تومان
