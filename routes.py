@@ -18,7 +18,7 @@ import threading
 from datetime import datetime
 from flask import jsonify, request, Response, send_file
 from config import INDEX_FILE, BACKUP_FOLDER, DEFAULT_COMPONENT_CONFIG, DB_CONFIG
-from database import get_db_connection
+from database import get_db_connection, SERVER_CONFIG_FILE
 from auth_utils import hash_password, parse_permissions_recursive
 from services import fetch_daily_usd_price, USD_CACHE
 
@@ -83,16 +83,25 @@ def register_routes(app, server_state):
             username = data.get('username', 'System')
             safe_username = "".join([c for c in username if c.isalnum() or c in ('-','_')])
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            filename = f"nexus_backup_{safe_username}_{timestamp}.sql"
+            filename = f"HY_backup_{safe_username}_{timestamp}.sql"
             dest_path = os.path.join(BACKUP_FOLDER, filename)
             
-            # استفاده از mysqldump برای پشتیبان‌گیری از MySQL
+            # --- شروع اصلاح: خواندن تنظیمات جدید سرور ---
+            current_conf = DB_CONFIG.copy()
+            if os.path.exists(SERVER_CONFIG_FILE):
+                try:
+                    with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        current_conf.update(json.load(f))
+                except: pass
+            # ------------------------------------------
+            mysql_bin_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe"
             dump_cmd = [
-                'mysqldump',
-                f'--host={DB_CONFIG["host"]}',
-                f'--user={DB_CONFIG["user"]}',
-                f'--password={DB_CONFIG["password"]}',
-                DB_CONFIG["database"]
+                mysql_bin_path,  # به جای 'mysqldump'
+                f'--host={current_conf["host"]}',
+                f'--user={current_conf["user"]}',
+                f'--password={current_conf["password"]}',
+                f'--port={current_conf["port"]}', # پورت هم اضافه شد
+                current_conf["database"]
             ]
             
             with open(dest_path, 'w', encoding='utf-8') as f:
@@ -128,7 +137,7 @@ def register_routes(app, server_state):
                 path = os.path.join(BACKUP_FOLDER, f)
                 size = os.path.getsize(path) / 1024
                 ext = ".sql" if f.endswith('.sql') else ".db"
-                name_part = f.replace("nexus_backup_", "").replace(ext, "")
+                name_part = f.replace("HY_backup_", "").replace(ext, "")
                 creator = "سیستم"
                 readable_date = f
                 if len(name_part) >= 19:
@@ -158,13 +167,25 @@ def register_routes(app, server_state):
             temp_path = os.path.join(BACKUP_FOLDER, "temp_restore.sql")
             file.save(temp_path)
             
-            # اجرای دستور mysql برای بازگردانی در MySQL
+            # --- بخش اصلاح شده: تعریف current_conf ---
+            current_conf = DB_CONFIG.copy()
+            if os.path.exists(SERVER_CONFIG_FILE):
+                try:
+                    with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        current_conf.update(json.load(f))
+                except: pass
+            # ----------------------------------------
+
+            # مسیر فایل اجرایی mysql (حتماً چک کنید مسیر درست باشد)
+            mysql_client_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+
             restore_cmd = [
-                'mysql',
-                f'--host={DB_CONFIG["host"]}',
-                f'--user={DB_CONFIG["user"]}',
-                f'--password={DB_CONFIG["password"]}',
-                DB_CONFIG["database"]
+                mysql_client_path,
+                f'--host={current_conf["host"]}',
+                f'--user={current_conf["user"]}',
+                f'--password={current_conf["password"]}',
+                f'--port={current_conf["port"]}',
+                current_conf["database"]
             ]
             
             with open(temp_path, 'r', encoding='utf-8') as f:
@@ -174,30 +195,48 @@ def register_routes(app, server_state):
             return jsonify({"success": True, "message": "دیتابیس با موفقیت بازگردانی شد."})
         except Exception as e:
             return jsonify({"success": False, "error": f"خطا در بازگردانی: {str(e)}"}), 500
-    
+        
     # ------------------------------------------------------------------------------
     # بازگردانی داخلی: اجرای یکی از بک‌آپ‌های ذخیره شده در سرور روی دیتابیس
     # ------------------------------------------------------------------------------
     @app.route('/api/backup/restore/<filename>', methods=['POST'])
-    def restore_backup(filename: str):
+    def restore_backup(filename):
         try:
-            src = os.path.join(BACKUP_FOLDER, filename)
-            if not os.path.exists(src): return jsonify({"error": "فایل پیدا نشد"}), 404
+            # امنیت: جلوگیری از دسترسی به فایل‌های خارج از پوشه
+            safe_filename = os.path.basename(filename)
+            file_path = os.path.join(BACKUP_FOLDER, safe_filename)
             
-            restore_cmd = [
-                'mysql',
-                f'--host={DB_CONFIG["host"]}',
-                f'--user={DB_CONFIG["user"]}',
-                f'--password={DB_CONFIG["password"]}',
-                DB_CONFIG["database"]
-            ]
-            
-            with open(src, 'r', encoding='utf-8') as f:
-                subprocess.run(restore_cmd, stdin=f, check=True)
-                
-            return jsonify({"success": True})
-        except Exception as e: return jsonify({"error": str(e)}), 500
+            if not os.path.exists(file_path):
+                return jsonify({"error": "File not found"}), 404
 
+            # --- بخش اصلاح شده: تعریف current_conf ---
+            current_conf = DB_CONFIG.copy()
+            if os.path.exists(SERVER_CONFIG_FILE):
+                try:
+                    with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        current_conf.update(json.load(f))
+                except: pass
+            # ----------------------------------------
+
+            # مسیر فایل اجرایی mysql (حتماً چک کنید مسیر درست باشد)
+            mysql_client_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+
+            restore_cmd = [
+                mysql_client_path,
+                f'--host={current_conf["host"]}',
+                f'--user={current_conf["user"]}',
+                f'--password={current_conf["password"]}',
+                f'--port={current_conf["port"]}',
+                current_conf["database"]
+            ]
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                subprocess.run(restore_cmd, stdin=f, check=True)
+
+            return jsonify({"success": True, "message": "Database restored successfully"})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        
     # ------------------------------------------------------------------------------
     # حذف بک‌آپ: پاک کردن دائمی یک فایل پشتیبان از روی سرور
     # ------------------------------------------------------------------------------

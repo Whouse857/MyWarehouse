@@ -141,7 +141,7 @@ const BackupPage = () => {
                                 <div className="flex justify-between items-center text-[10px] text-gray-500 mb-3 px-1">
                                     <span>حجم: {b.size} KB</span>
                                     {/* اصلاح نمایش نام فایل جهت حذف پسوند .sql یا .db */}
-                                    <span className="font-mono ltr text-gray-600">{b.name.replace('nexus_backup_', '').replace('.sql', '').replace('.db', '')}</span>
+                                    <span className="font-mono ltr text-gray-600">{b.name.replace('HY_backup_', '').replace('.sql', '').replace('.db', '')}</span>
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={() => handleDownload(b.name)} className="px-3 py-2 bg-white/5 hover:bg-blue-500 hover:text-white text-blue-400 border border-blue-500/20 rounded-lg transition" title="دانلود روی سیستم">
