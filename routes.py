@@ -86,21 +86,27 @@ def register_routes(app, server_state):
             filename = f"HY_backup_{safe_username}_{timestamp}.sql"
             dest_path = os.path.join(BACKUP_FOLDER, filename)
             
-            # --- شروع اصلاح: خواندن تنظیمات جدید سرور ---
+            # --- خواندن تنظیمات ---
             current_conf = DB_CONFIG.copy()
+            # مقادیر پیش‌فرض مسیرها (برای اینکه اگر تنظیم نشده بود، روی سیستم فعلی کار کند)
+            mysqldump_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe"
+            
             if os.path.exists(SERVER_CONFIG_FILE):
                 try:
                     with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                        current_conf.update(json.load(f))
+                        saved = json.load(f)
+                        current_conf.update(saved)
+                        # اگر کاربر مسیر جدید داده بود، جایگزین کن
+                        if saved.get('mysqldump_path'):
+                            mysqldump_path = saved.get('mysqldump_path')
                 except: pass
-            # ------------------------------------------
-            mysql_bin_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe"
+
             dump_cmd = [
-                mysql_bin_path,  # به جای 'mysqldump'
+                mysqldump_path,
                 f'--host={current_conf["host"]}',
                 f'--user={current_conf["user"]}',
                 f'--password={current_conf["password"]}',
-                f'--port={current_conf["port"]}', # پورت هم اضافه شد
+                f'--port={current_conf["port"]}',
                 current_conf["database"]
             ]
             
@@ -167,18 +173,18 @@ def register_routes(app, server_state):
             temp_path = os.path.join(BACKUP_FOLDER, "temp_restore.sql")
             file.save(temp_path)
             
-            # --- بخش اصلاح شده: تعریف current_conf ---
             current_conf = DB_CONFIG.copy()
+            mysql_client_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+            
             if os.path.exists(SERVER_CONFIG_FILE):
                 try:
                     with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                        current_conf.update(json.load(f))
+                        saved = json.load(f)
+                        current_conf.update(saved)
+                        if saved.get('mysql_client_path'):
+                            mysql_client_path = saved.get('mysql_client_path')
                 except: pass
-            # ----------------------------------------
-
-            # مسیر فایل اجرایی mysql (حتماً چک کنید مسیر درست باشد)
-            mysql_client_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-
+            
             restore_cmd = [
                 mysql_client_path,
                 f'--host={current_conf["host"]}',
@@ -202,24 +208,23 @@ def register_routes(app, server_state):
     @app.route('/api/backup/restore/<filename>', methods=['POST'])
     def restore_backup(filename):
         try:
-            # امنیت: جلوگیری از دسترسی به فایل‌های خارج از پوشه
             safe_filename = os.path.basename(filename)
             file_path = os.path.join(BACKUP_FOLDER, safe_filename)
             
             if not os.path.exists(file_path):
                 return jsonify({"error": "File not found"}), 404
 
-            # --- بخش اصلاح شده: تعریف current_conf ---
             current_conf = DB_CONFIG.copy()
+            mysql_client_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+
             if os.path.exists(SERVER_CONFIG_FILE):
                 try:
                     with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                        current_conf.update(json.load(f))
+                        saved = json.load(f)
+                        current_conf.update(saved)
+                        if saved.get('mysql_client_path'):
+                            mysql_client_path = saved.get('mysql_client_path')
                 except: pass
-            # ----------------------------------------
-
-            # مسیر فایل اجرایی mysql (حتماً چک کنید مسیر درست باشد)
-            mysql_client_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
 
             restore_cmd = [
                 mysql_client_path,

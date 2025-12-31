@@ -5,9 +5,12 @@
 const { useState, useEffect } = React;
 
 const ServerSettingsPage = ({ serverStatus }) => {
-    // وضعیت تنظیمات دیتابیس
+    // خط ۴۴ تا ۴۸ فایل admin_server.js را با این جایگزین کنید:
     const [config, setConfig] = useState({
-        host: '', user: '', password: '', database: '', port: 3306
+        host: '', user: '', password: '', database: '', port: 3306,
+        // اینجا آدرس‌های پیش‌فرض را می‌نویسیم تا کاربر ببیند
+        mysqldump_path: 'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysqldump.exe', 
+        mysql_client_path: 'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe'
     });
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -128,6 +131,34 @@ const ServerSettingsPage = ({ serverStatus }) => {
                         >
                             <i data-lucide={showPass ? "eye-off" : "eye"} className="w-5 h-5"></i>
                         </button>
+                    </div>
+                </div>
+
+                <div className="glass-panel p-6 rounded-[2rem] border border-white/10 shadow-2xl relative bg-[#0f172a]/90">
+                    <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="folder-cog" className="w-5 h-5 text-orange-400"></i>مسیر فایل‌های اجرایی (Binaries)</h3>
+                    <div className="space-y-4">
+                        <div className="p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl text-xs text-orange-300 leading-relaxed mb-4">
+                            <i data-lucide="info" className="w-4 h-4 inline-block ml-1 align-middle"></i>
+                            برای بک‌آپ و ریستور، سیستم نیاز دارد بداند MySQL کجا نصب شده است. آدرس فایل‌های <b>mysqldump.exe</b> و <b>mysql.exe</b> را در زیر وارد کنید.
+                        </div>
+                        
+                        <NexusInput 
+                            label="مسیر فایل mysqldump.exe (برای بک‌آپ)" 
+                            value={config.mysqldump_path || ''} 
+                            onChange={e => setConfig({...config, mysqldump_path: e.target.value})} 
+                            dir="ltr" 
+                            className="text-left font-mono text-xs text-gray-300"
+                            placeholder="C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe"
+                        />
+                        
+                        <NexusInput 
+                            label="مسیر فایل mysql.exe (برای ریستور)" 
+                            value={config.mysql_client_path || ''} 
+                            onChange={e => setConfig({...config, mysql_client_path: e.target.value})} 
+                            dir="ltr" 
+                            className="text-left font-mono text-xs text-gray-300"
+                            placeholder="C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+                        />
                     </div>
                 </div>
 
