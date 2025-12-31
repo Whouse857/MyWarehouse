@@ -1,4 +1,13 @@
-# --- [فایل تعریف تمام APIها] ---
+# ==============================================================================
+# نسخه: 0.20
+# فایل: routes.py
+# تهیه کننده: ------
+# توضیح توابع و ماژول های استفاده شده در برنامه:
+# این ماژول مسئول تعریف تمامی مسیرها (Routes) و نقاط پایانی (Endpoints) سیستم است.
+# توابع موجود در این فایل وظایف مدیریت قطعات، کاربران، تنظیمات، عملیات پشتیبان‌گیری
+# و گزارش‌گیری‌های انبار را از طریق پروتکل HTTP مدیریت می‌کنند.
+# ==============================================================================
+
 import os
 import time
 import json
@@ -12,11 +21,18 @@ from database import get_db_connection
 from auth_utils import hash_password, parse_permissions_recursive
 from services import fetch_daily_usd_price, USD_CACHE
 
-# متغیر کش برای ایندکس
+# متغیر کش برای ذخیره محتوای فایل اصلی (Index) جهت بهینه‌سازی سرعت لود
 GLOBAL_INDEX_CACHE = None
 
+# ------------------------------------------------------------------------------
+# [تگ: ثبت مسیرهای اصلی برنامه]
+# این تابع تمامی مسیرهای API را به اپلیکیشن Flask معرفی و ثبت می‌کند.
+# ------------------------------------------------------------------------------
 def register_routes(app, server_state):
     
+    # ------------------------------------------------------------------------------
+    # مسیر ریشه: ارائه فایل index.html (رابط کاربری) با سیستم کشینگ
+    # ------------------------------------------------------------------------------
     @app.route('/')
     def serve_index() -> Response:
         global GLOBAL_INDEX_CACHE
@@ -26,31 +42,45 @@ def register_routes(app, server_state):
             return Response(GLOBAL_INDEX_CACHE, mimetype='text/html')
         return "Error: index.html not found.", 404
 
+    # ------------------------------------------------------------------------------
+    # مسیر Heartbeat: به‌روزرسانی زمان آخرین فعالیت کلاینت برای جلوگیری از بسته شدن سرور
+    # ------------------------------------------------------------------------------
     @app.route('/api/heartbeat', methods=['POST'])
     def heartbeat() -> Response:
         server_state["last_heartbeat"] = time.time(); server_state["shutdown_trigger"] = False
         return jsonify({"status": "alive"})
 
+    # ------------------------------------------------------------------------------
+    # مسیر Client Closed: اعلام بسته شدن دستی پنجره مرورگر توسط کلاینت
+    # ------------------------------------------------------------------------------
     @app.route('/api/client_closed', methods=['POST'])
     def client_closed() -> Response:
         server_state["shutdown_trigger"] = True
         return jsonify({"status": "closing_soon"})
 
+    # ------------------------------------------------------------------------------
+    # مسیر Exit App: خاموش کردن کامل سرور و خروج از برنامه
+    # ------------------------------------------------------------------------------
     @app.route('/api/exit_app', methods=['POST'])
     def exit_app() -> Response:
         def shutdown(): time.sleep(0.5); os._exit(0)
         threading.Thread(target=shutdown).start()
         return jsonify({"status": "exiting"}), 200
 
-    # --- بخش بک‌آپ ---
-    # --- بخش بک‌آپ (نسخه بهینه: ذخیره داخلی + قابلیت دانلود) ---
+    # ------------------------------------------------------------------------------
+    # [بخش: مدیریت پشتیبان‌گیری (Backup)]
+    # این بخش شامل ایجاد، لیست کردن، دانلود و بازگردانی دیتابیس است.
+    # ------------------------------------------------------------------------------
+
+    # ------------------------------------------------------------------------------
+    # ایجاد بک‌آپ: تهیه نسخه کپی از دیتابیس فعلی با نام کاربر و برچسب زمانی
+    # ------------------------------------------------------------------------------
     @app.route('/api/backup/create', methods=['POST'])
     def create_backup():
         try:
             data = request.json or {}
             username = data.get('username', 'System')
             
-            # ۱. انتقال اطلاعات از WAL به فایل اصلی قبل از کپی
             try:
                 conn = get_db_connection()
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
@@ -58,22 +88,21 @@ def register_routes(app, server_state):
             except Exception as e:
                 print(f"WAL Checkpoint Error: {e}")
             
-            # ۲. نام‌گذاری و مسیردهی (فقط در پوشه بک‌آپ داخلی برنامه)
             safe_username = "".join([c for c in username if c.isalnum() or c in ('-','_')])
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             filename = f"nexus_backup_{safe_username}_{timestamp}.db"
             internal_dest = os.path.join(BACKUP_FOLDER, filename)
             
-            # ۳. کپی فایل دیتابیس در مخزن مرکزی برنامه
             shutil.copy2(DATABASE_FILE, internal_dest)
-            
             return jsonify({"success": True, "filename": filename})
         except Exception as e: 
             return jsonify({"error": str(e)}), 500
 
+    # ------------------------------------------------------------------------------
+    # دانلود بک‌آپ: ارسال فایل دیتابیس مشخص شده به سیستم کلاینت
+    # ------------------------------------------------------------------------------
     @app.route('/api/backup/download/<filename>', methods=['GET'])
     def download_backup(filename: str):
-        """ارسال فایل برای دانلود روی سیستم کاربر"""
         try:
             path = os.path.join(BACKUP_FOLDER, filename)
             if not os.path.exists(path):
@@ -82,11 +111,13 @@ def register_routes(app, server_state):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
         
+    # ------------------------------------------------------------------------------
+    # لیست بک‌آپ‌ها: نمایش تمامی فایل‌های پشتیبان موجود در پوشه مخصوص
+    # ------------------------------------------------------------------------------
     @app.route('/api/backup/list', methods=['GET'])
     def list_backups():
         try:
             files = [f for f in os.listdir(BACKUP_FOLDER) if f.endswith('.db')]
-            # مرتب‌سازی بر اساس زمان آخرین تغییر فایل در ویندوز (جدیدترین در ابتدای لیست)
             files.sort(key=lambda x: os.path.getmtime(os.path.join(BACKUP_FOLDER, x)), reverse=True)
             backups = []
             for f in files:
@@ -106,9 +137,12 @@ def register_routes(app, server_state):
                 backups.append({"name": f, "size": round(size, 2), "date": readable_date, "creator": creator})
             return jsonify(backups)
         except Exception as e: return jsonify({"error": str(e)}), 500
+
+    # ------------------------------------------------------------------------------
+    # آپلود و بازگردانی: جایگزینی فایل دیتابیس فعلی با فایل آپلود شده توسط کاربر
+    # ------------------------------------------------------------------------------
     @app.route('/api/backup/restore_upload', methods=['POST'])
     def restore_database_upload():
-        """دریافت فایل دیتابیس از کاربر و جایگزینی آن با دیتابیس فعلی"""
         if 'file' not in request.files:
             return jsonify({"success": False, "error": "فایلی ارسال نشده است"}), 400
         
@@ -117,30 +151,26 @@ def register_routes(app, server_state):
             return jsonify({"success": False, "error": "نام فایل نامعتبر است"}), 400
 
         try:
-            # ۱. تلاش برای آزاد کردن فایل دیتابیس قبل از جایگزینی
             try:
                 conn = get_db_connection()
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
                 conn.close()
             except: pass
             
-            # ۲. ذخیره مستقیم روی فایل اصلی دیتابیس پروژه
             file.save(DATABASE_FILE)
-            
-            return jsonify({
-                "success": True, 
-                "message": "دیتابیس با موفقیت بازگردانی شد."
-            })
+            return jsonify({"success": True, "message": "دیتابیس با موفقیت بازگردانی شد."})
         except Exception as e:
             return jsonify({"success": False, "error": f"خطا در جایگزینی فایل: {str(e)}"}), 500
     
+    # ------------------------------------------------------------------------------
+    # بازگردانی داخلی: جایگزینی دیتابیس فعلی با یکی از بک‌آپ‌های ذخیره شده در سرور
+    # ------------------------------------------------------------------------------
     @app.route('/api/backup/restore/<filename>', methods=['POST'])
     def restore_backup(filename: str):
         try:
             src = os.path.join(BACKUP_FOLDER, filename)
             if not os.path.exists(src): return jsonify({"error": "File not found"}), 404
             
-            # ۱. آزاد کردن فایل دیتابیس قبل از بازگردانی (بسیار مهم)
             try:
                 conn = get_db_connection()
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
@@ -158,6 +188,9 @@ def register_routes(app, server_state):
                 raise e
         except Exception as e: return jsonify({"error": str(e)}), 500
 
+    # ------------------------------------------------------------------------------
+    # حذف بک‌آپ: پاک کردن دائمی یک فایل پشتیبان از روی سرور
+    # ------------------------------------------------------------------------------
     @app.route('/api/backup/delete/<filename>', methods=['DELETE'])
     def delete_backup(filename: str):
         try:
@@ -166,7 +199,14 @@ def register_routes(app, server_state):
             os.remove(src); return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
 
-    # --- بخش احراز هویت ---
+    # ------------------------------------------------------------------------------
+    # [بخش: احراز هویت و مدیریت کاربران (Auth)]
+    # مدیریت ورود، لیست کاربران، ذخیره و تغییر گذرواژه.
+    # ------------------------------------------------------------------------------
+
+    # ------------------------------------------------------------------------------
+    # ورود (Login): بررسی اعتبار کاربر و ارسال سطوح دسترسی
+    # ------------------------------------------------------------------------------
     @app.route('/api/login', methods=['POST'])
     def login():
         try:
@@ -183,6 +223,9 @@ def register_routes(app, server_state):
                 return jsonify({"success": False, "message": "نام کاربری یا رمز عبور اشتباه است"}), 401
         except Exception as e: return jsonify({"error": str(e)}), 500
 
+    # ------------------------------------------------------------------------------
+    # لیست کاربران: دریافت اطلاعات تمامی کاربران ثبت شده در سیستم
+    # ------------------------------------------------------------------------------
     @app.route('/api/users', methods=['GET'])
     def get_users():
         with get_db_connection() as conn:
@@ -194,6 +237,9 @@ def register_routes(app, server_state):
                 result.append(d)
             return jsonify(result)
 
+    # ------------------------------------------------------------------------------
+    # ذخیره کاربر: افزودن کاربر جدید یا ویرایش اطلاعات و دسترسی‌های کاربر فعلی
+    # ------------------------------------------------------------------------------
     @app.route('/api/users/save', methods=['POST'])
     def save_user():
         try:
@@ -221,6 +267,9 @@ def register_routes(app, server_state):
         except sqlite3.IntegrityError: return jsonify({"error": "Duplicate username"}), 400
         except Exception as e: return jsonify({"error": str(e)}), 500
 
+    # ------------------------------------------------------------------------------
+    # حذف کاربر: حذف اکانت کاربر (به استثنای کاربر ادمین اصلی)
+    # ------------------------------------------------------------------------------
     @app.route('/api/users/delete/<int:id>', methods=['DELETE'])
     def delete_user(id: int):
         with get_db_connection() as conn:
@@ -230,6 +279,9 @@ def register_routes(app, server_state):
             conn.commit()
             return jsonify({"success": True})
 
+    # ------------------------------------------------------------------------------
+    # تغییر رمز عبور: به‌روزرسانی گذرواژه کاربر فعلی با تایید رمز عبور قبلی
+    # ------------------------------------------------------------------------------
     @app.route('/api/user/change_password', methods=['POST'])
     def change_password_api():
         try:
@@ -244,7 +296,14 @@ def register_routes(app, server_state):
                 return jsonify({"success": True})
         except Exception as e: return jsonify({"success": False, "error": str(e)}), 500
 
-    # --- بخش تنظیمات ---
+    # ------------------------------------------------------------------------------
+    # [بخش: تنظیمات سیستم (Settings)]
+    # مدیریت پیکربندی قطعات، دسته‌بندی‌ها و تغییر نام لیست‌ها.
+    # ------------------------------------------------------------------------------
+
+    # ------------------------------------------------------------------------------
+    # دریافت کانفیگ: خواندن تنظیمات ذخیره شده برای انواع قطعات و فیلدها
+    # ------------------------------------------------------------------------------
     @app.route('/api/settings/config', methods=['GET'])
     def get_config():
         with get_db_connection() as conn:
@@ -256,43 +315,40 @@ def register_routes(app, server_state):
                 return jsonify(stored_config)
             return jsonify(DEFAULT_COMPONENT_CONFIG)
 
+    # ------------------------------------------------------------------------------
+    # ذخیره کانفیگ: ثبت تنظیمات جدید و بروزرسانی کدهای انبار در صورت تغییر پیشوند
+    # ------------------------------------------------------------------------------
     @app.route('/api/settings/config', methods=['POST'])
     def save_config():
         try:
             new_config = request.json
             with get_db_connection() as conn:
-                # ۱. دریافت تنظیمات قبلی برای مقایسه پیشوندها
                 old_row = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
                 if old_row:
                     old_config = json.loads(old_row['value'])
-                    
-                    # ۲. بررسی تغییر پیشوند در هر دسته
                     for category, settings in new_config.items():
                         if category in old_config:
                             old_prefix = old_config[category].get('prefix')
                             new_prefix = settings.get('prefix')
-                            
-                            # اگر پیشوند تغییر کرده بود و خالی نبود
                             if old_prefix and new_prefix and old_prefix != new_prefix:
-                                # به‌روزرسانی تمام کدهای انبار در جدول قطعات
-                                # کد جدید = پیشوند جدید + بقیه کد قدیمی (از کاراکتر ۴ به بعد)
                                 conn.execute(
                                     "UPDATE parts SET part_code = ? || SUBSTR(part_code, ?) WHERE type = ? AND part_code LIKE ?",
                                     (new_prefix, len(old_prefix) + 1, category, f"{old_prefix}%")
                                 )
-                                # به‌روزرسانی کدها در جدول لاگ‌ها برای هماهنگی تاریخچه
                                 conn.execute(
                                     "UPDATE purchase_log SET part_code = ? || SUBSTR(part_code, ?) WHERE type = ? AND part_code LIKE ?",
                                     (new_prefix, len(old_prefix) + 1, category, f"{old_prefix}%")
                                 )
 
-                # ۳. ذخیره تنظیمات جدید
                 conn.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ('component_config', json.dumps(new_config)))
                 conn.commit()
                 return jsonify({"success": True})
         except Exception as e: 
             return jsonify({"error": str(e)}), 500
 
+    # ------------------------------------------------------------------------------
+    # تغییر نام آیتم: به‌روزرسانی نام دسته‌ها یا آیتم‌های لیست در کل دیتابیس
+    # ------------------------------------------------------------------------------
     @app.route('/api/settings/rename', methods=['POST'])
     def rename_item_api():
         try:
@@ -323,15 +379,24 @@ def register_routes(app, server_state):
                 return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
 
-    # --- بخش قطعات ---
+    # ------------------------------------------------------------------------------
+    # [بخش: مدیریت موجودی و تراکنش‌ها (Parts & Transactions)]
+    # مدیریت اصلی قطعات شامل ثبت، ورود، خروج و حذف.
+    # ------------------------------------------------------------------------------
+
+    # ------------------------------------------------------------------------------
+    # لیست قطعات: دریافت مشخصات تمامی کالاهای موجود در انبار
+    # ------------------------------------------------------------------------------
     @app.route('/api/parts', methods=['GET'])
     def get_parts():
         with get_db_connection() as conn:
             parts = conn.execute('SELECT * FROM parts ORDER BY id DESC').fetchall()
             return jsonify([dict(p) for p in parts])
 
+    # ------------------------------------------------------------------------------
+    # ذخیره قطعه: ثبت قطعه جدید، شارژ موجودی یا ویرایش مشخصات فنی
+    # ------------------------------------------------------------------------------
     @app.route('/api/save', methods=['POST'])
-    
     def save_part():
         try:
             d = request.json
@@ -344,47 +409,32 @@ def register_routes(app, server_state):
             current_entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             with get_db_connection() as conn:
-                # --- اضافه کردن این بخش برای مدیریت قطعات حذف شده ---
                 if part_id:
                     exists = conn.execute("SELECT id FROM parts WHERE id = ?", (part_id,)).fetchone()
-                    if not exists:
-                        part_id = None  # اگر قطعه حذف شده، آن را به عنوان قطعه جدید ثبت کن
-                # ---------------------------------------------------
+                    if not exists: part_id = None
+                
                 row_cfg = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
                 config = json.loads(row_cfg['value']) if row_cfg else {}
                 prefix = config.get(d.get("type"), {}).get("prefix", "PRT")
 
-               # --- بخش اصلاح شده برای تولید کد انبار صعودی و یکتا ---
                 part_code = d.get("part_code", "")
                 if not part_id and not part_code:
-                    # پیدا کردن آخرین کد ثبت شده برای این نوع قطعه
-                    last_row = conn.execute(
-                        "SELECT part_code FROM parts WHERE type = ? AND part_code LIKE ? ORDER BY part_code DESC LIMIT 1",
-                        (d.get("type"), f"{prefix}%")
-                    ).fetchone()
-                    
+                    last_row = conn.execute("SELECT part_code FROM parts WHERE type = ? AND part_code LIKE ? ORDER BY part_code DESC LIMIT 1", (d.get("type"), f"{prefix}%")).fetchone()
                     if last_row and last_row['part_code']:
                         try:
-                            # استخراج عدد از انتهای کد و اضافه کردن یک واحد به آن
                             last_num_str = last_row['part_code'][len(prefix):]
                             next_num = int(last_num_str) + 1
-                        except:
-                            next_num = 1
-                    else:
-                        next_num = 1
-                    
+                        except: next_num = 1
+                    else: next_num = 1
                     part_code = f"{prefix}{str(next_num).zfill(9)}"
-                # -------------------------------------------------------
 
                 links = d.get("purchase_links", []); links_json = json.dumps(links[:5]) if isinstance(links, list) else "[]"
                 
-                # --- تغییر: دریافت مقادیر فیلدهای جدید ---
                 payload = {
                     "val": d.get("val", ""), "watt": d.get("watt", ""), "tolerance": d.get("tol", ""), "package": d.get("pkg", ""), "type": d.get("type", ""), "buy_date": d.get("date", ""),
                     "quantity": int(d.get("qty") or 0), "toman_price": price, "reason": d.get("reason", ""), "min_quantity": int(d.get("min_qty") or 1), "vendor_name": d.get("vendor_name", ""),
                     "last_modified_by": username, "storage_location": d.get("location", ""), "tech": d.get("tech", ""), "usd_rate": usd_rate, "purchase_links": links_json,
                     "invoice_number": inv_num, "entry_date": current_entry_date , "part_code": part_code,
-                    # اضافه شدن فیلدها به دیکشنری
                     "list5": d.get("list5", ""), "list6": d.get("list6", ""), "list7": d.get("list7", ""), 
                     "list8": d.get("list8", ""), "list9": d.get("list9", ""), "list10": d.get("list10", "")
                 }
@@ -394,50 +444,25 @@ def register_routes(app, server_state):
                 dup_params = (payload['val'], payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['tech'], payload['storage_location'])
                 
                 if part_id:
-                    # ۱. دریافت اطلاعات فعلی قطعه از دیتابیس برای مقایسه
                     old = conn.execute('SELECT * FROM parts WHERE id = ?', (part_id,)).fetchone()
-                    
-                    if not old:
-                        part_id = None
+                    if not old: part_id = None
                     else:
-                        # ۲. تعریف لیست فیلدهایی که باید تغییرات آن‌ها رصد شود
-                        track_fields = {
-                            "val": "مقدار", "watt": "پارامتر", "tolerance": "تولرانس", "package": "پکیج",
-                            "type": "دسته", "buy_date": "تاریخ خرید", "quantity": "تعداد", "toman_price": "قیمت تومان",
-                            "min_quantity": "حداقل موجودی", "vendor_name": "فروشنده", "storage_location": "آدرس",
-                            "tech": "تکنولوژی", "usd_rate": "نرخ دلار", "invoice_number": "شماره فاکتور",
-                            "purchase_links": "لینک‌ها",
-                            "list5": "فیلد۵", "list6": "فیلد۶", "list7": "فیلد۷", "list8": "فیلد۸", "list9": "فیلد۹", "list10": "فیلد۱۰"
-                        }
-                        
+                        track_fields = {"val": "مقدار", "watt": "پارامتر", "tolerance": "تولرانس", "package": "پکیج", "type": "دسته", "buy_date": "تاریخ خرید", "quantity": "تعداد", "toman_price": "قیمت تومان", "min_quantity": "حداقل موجودی", "vendor_name": "فروشنده", "storage_location": "آدرس", "tech": "تکنولوژی", "usd_rate": "نرخ دلار", "invoice_number": "شماره فاکتور", "purchase_links": "لینک‌ها", "list5": "فیلد۵", "list6": "فیلد۶", "list7": "فیلد۷", "list8": "فیلد۸", "list9": "فیلد۹", "list10": "فیلد۱۰"}
                         changes = []
                         for col, label in track_fields.items():
-                            new_v = payload.get(col)
-                            old_v = old[col]
-                            
-                            # مقایسه مقدار جدید و قدیم (نرمال‌سازی برای دقت بیشتر)
+                            new_v = payload.get(col); old_v = old[col]
                             if str(old_v if old_v is not None else "") != str(new_v if new_v is not None else ""):
                                 changes.append(f"{label}: {old_v} -> {new_v}")
-                        
-                        # ۳. پیاده‌سازی شرط عدم تغییر: اگر هیچ فیلدی عوض نشده بود، عملیات را متوقف کن
-                        if not changes:
-                            return jsonify({"success": True, "message": "No changes detected"})
-                        
-                        # ۴. ثبت جزئیات تغییرات در بخش توضیحات (Reason) لاگ
+                        if not changes: return jsonify({"success": True, "message": "No changes detected"})
                         detail_summary = " [اصلاح: " + " | ".join(changes) + "]"
                         payload["reason"] = (payload.get("reason") or "") + detail_summary
-
-                        # ۵. حفظ منطق قبلی برای تشخیص نوع عملیات (ورود یا ویرایش)
                         existing = conn.execute(dup_sql + " AND id != ?", (*dup_params, part_id)).fetchone()
                         if existing: return jsonify({"error": "Duplicate part"}), 400
-                        
                         old_q = old['quantity']
                         if payload['quantity'] > old_q: op = 'ENTRY (Refill)'
                         elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
                         else: op = 'UPDATE (Edit)'
                         qty_change = payload['quantity'] - old_q
-                        
-                        # دستور آپدیت قطعه در دیتابیس
                         conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=?, list5=?, list6=?, list7=?, list8=?, list9=?, list10=? WHERE id=?""", (*payload.values(), part_id))
                         rid = part_id
                 else:
@@ -445,24 +470,20 @@ def register_routes(app, server_state):
                     if existing:
                         rid = existing['id']
                         old_p = conn.execute("SELECT part_code FROM parts WHERE id = ?", (rid,)).fetchone()
-                        if old_p and old_p['part_code']:
-                            payload['part_code'] = old_p['part_code']
-                        
+                        if old_p and old_p['part_code']: payload['part_code'] = old_p['part_code']
                         new_qty = existing['quantity'] + qty_change; op = 'ENTRY (Refill - Merge)'
-                        # توجه: در حالت ادغام (Merge)، معمولاً مشخصات فنی تغییر نمی‌کند، پس لیست‌ها را آپدیت نمی‌کنیم یا اگر بخواهید می‌توانید اضافه کنید.
-                        # اینجا فقط موارد اصلی آپدیت می‌شوند.
                         conn.execute("UPDATE parts SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], payload['part_code'], rid))
                     else:
-                        # --- آپدیت دستور INSERT ---
                         cur = conn.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date, part_code, list5, list6, list7, list8, list9, list10) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
                 
-                # --- آپدیت لاگ برای شامل شدن فیلدهای جدید ---
-                conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number, part_code, list5, list6, list7, list8, list9, list10) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-                            (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code'], payload['list5'], payload['list6'], payload['list7'], payload['list8'], payload['list9'], payload['list10']))
+                conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number, part_code, list5, list6, list7, list8, list9, list10) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code'], payload['list5'], payload['list6'], payload['list7'], payload['list8'], payload['list9'], payload['list10']))
                 conn.commit()
             return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
         
+    # ------------------------------------------------------------------------------
+    # برداشت کالا: ثبت خروج قطعات از انبار برای مصارف پروژه‌ای
+    # ------------------------------------------------------------------------------
     @app.route('/api/withdraw', methods=['POST'])
     def withdraw_parts():
         try:
@@ -485,26 +506,38 @@ def register_routes(app, server_state):
             return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
 
+    # ------------------------------------------------------------------------------
+    # حذف قطعه: پاک کردن یک قطعه از لیست کالاهای انبار
+    # ------------------------------------------------------------------------------
     @app.route('/api/delete/<int:id>', methods=['DELETE'])
     def delete_part(id: int):
         with get_db_connection() as conn:
             try:
                 part = conn.execute("SELECT * FROM parts WHERE id=?", (id,)).fetchone()
                 if part: 
-                    conn.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech, part_code) 
-                                 VALUES (?, ?, 0, 'DELETE', 'Deleted by user', ?, ?, ?, ?, ?, ?, ?)""", 
-                                 (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech'], part['part_code']))
+                    conn.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech, part_code) VALUES (?, ?, 0, 'DELETE', 'Deleted by user', ?, ?, ?, ?, ?, ?, ?)""", (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech'], part['part_code']))
             except: pass
             conn.execute('DELETE FROM parts WHERE id = ?', (id,))
             conn.commit()
             return jsonify({"success": True})
 
+    # ------------------------------------------------------------------------------
+    # [بخش: مدیریت مخاطبین (Contacts)]
+    # مدیریت تامین‌کنندگان و فروشندگان قطعات.
+    # ------------------------------------------------------------------------------
+
+    # ------------------------------------------------------------------------------
+    # لیست مخاطبین: دریافت اطلاعات تمامی تامین‌کنندگان ثبت شده
+    # ------------------------------------------------------------------------------
     @app.route('/api/contacts', methods=['GET'])
     def get_contacts():
         with get_db_connection() as conn:
             rows = conn.execute('SELECT * FROM contacts ORDER BY name ASC').fetchall()
             return jsonify([dict(r) for r in rows])
 
+    # ------------------------------------------------------------------------------
+    # ذخیره مخاطب: افزودن تامین‌کننده جدید یا ویرایش اطلاعات فعلی
+    # ------------------------------------------------------------------------------
     @app.route('/api/contacts/save', methods=['POST'])
     def save_contact():
         try:
@@ -517,24 +550,37 @@ def register_routes(app, server_state):
                 return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
 
+    # ------------------------------------------------------------------------------
+    # حذف مخاطب: پاک کردن یک تامین‌کننده از لیست مخاطبین
+    # ------------------------------------------------------------------------------
     @app.route('/api/contacts/delete/<int:id>', methods=['DELETE'])
     def delete_contact(id: int):
         with get_db_connection() as conn: conn.execute('DELETE FROM contacts WHERE id = ?', (id,)); conn.commit()
         return jsonify({"success": True})
 
+    # ------------------------------------------------------------------------------
+    # [بخش: لاگ و آمار (Logs & Stats)]
+    # دریافت تاریخچه تراکنش‌ها و آمارهای کلیدی انبار.
+    # ------------------------------------------------------------------------------
+
+    # ------------------------------------------------------------------------------
+    # دریافت لاگ: مشاهده تاریخچه کامل ورود و خروج کالاها
+    # ------------------------------------------------------------------------------
     @app.route('/api/log', methods=['GET'])
     def get_log():
         with get_db_connection() as conn:
             rows = conn.execute('SELECT * FROM purchase_log ORDER BY timestamp DESC').fetchall()
             return jsonify([dict(r) for r in rows])
 
+    # ------------------------------------------------------------------------------
+    # آمار انبار: محاسبه ارزش سرمایه، قیمت زنده دلار و لیست کسری‌ها
+    # ------------------------------------------------------------------------------
     @app.route('/api/inventory/stats', methods=['GET'])
     def get_inventory_stats():
         try:
             daily_usd_price = fetch_daily_usd_price()
             usd_date = USD_CACHE.get("date_str", "")
             with get_db_connection() as conn:
-                # اضافه شدن ستون‌های جدید به کوئری
                 rows = conn.execute("SELECT id, val, quantity, toman_price, usd_rate, min_quantity, type, package, storage_location, watt, tolerance, tech, vendor_name, purchase_links, invoice_number, part_code FROM parts").fetchall()
                 total_items = len(rows); total_quantity = 0; total_value_toman_calculated = 0.0; total_value_usd_live = 0.0; shortages = []; categories = {}
                 for row in rows:
@@ -543,50 +589,38 @@ def register_routes(app, server_state):
                     if u > 0 and daily_usd_price > 0: current_part_value_toman = (p / u) * q * daily_usd_price
                     else: current_part_value_toman = p * q
                     total_value_toman_calculated += current_part_value_toman
-                    
                     if q <= min_q:
                         links = []
                         try: 
                             if row['purchase_links']: links = json.loads(row['purchase_links'])
                         except: pass
-                        # ارسال کد انبار و فاکتور به لیست کسری‌ها
-                        shortages.append({
-                            "id": row['id'], "val": row['val'], "pkg": row['package'], "qty": q, "min": min_q, 
-                            "loc": row['storage_location'], "type": row['type'], "watt": row['watt'], 
-                            "tolerance": row['tolerance'], "tech": row['tech'], "vendor": row['vendor_name'], 
-                            "links": links, "invoice_number": row['invoice_number'], "part_code": row['part_code']
-                        })
-                        
+                        shortages.append({"id": row['id'], "val": row['val'], "pkg": row['package'], "qty": q, "min": min_q, "loc": row['storage_location'], "type": row['type'], "watt": row['watt'], "tolerance": row['tolerance'], "tech": row['tech'], "vendor": row['vendor_name'], "links": links, "invoice_number": row['invoice_number'], "part_code": row['part_code']})
                     if cat not in categories: categories[cat] = {"count": 0, "value": 0}
                     categories[cat]["count"] += q; categories[cat]["value"] += current_part_value_toman
-                
                 if daily_usd_price > 0: total_value_usd_live = total_value_toman_calculated / daily_usd_price
                 else: total_value_usd_live = 0
                 shortages.sort(key=lambda x: x['qty'])
-                
-                return jsonify({
-                    "total_items": total_items, "total_quantity": total_quantity, "total_value_toman": int(total_value_toman_calculated),
-                    "total_value_usd_live": round(total_value_usd_live, 2), "live_usd_price": daily_usd_price, "usd_date": usd_date, "shortages": shortages, "categories": categories
-                })   
+                return jsonify({"total_items": total_items, "total_quantity": total_quantity, "total_value_toman": int(total_value_toman_calculated), "total_value_usd_live": round(total_value_usd_live, 2), "live_usd_price": daily_usd_price, "usd_date": usd_date, "shortages": shortages, "categories": categories})   
         except Exception as e: return jsonify({"error": str(e)}), 500
-# --- [بخش جدید: مدیریت هوشمند لاگ‌ها و اصلاح انبار] ---
+
+    # ------------------------------------------------------------------------------
+    # حذف لاگ: حذف فیزیکی رکورد تراکنش و واگردانی موجودی انبار
+    # ------------------------------------------------------------------------------
     @app.route('/api/log/delete/<int:log_id>', methods=['DELETE'])
     def delete_log_entry(log_id: int) -> Response:
         try:
             with get_db_connection() as conn:
                 log = conn.execute("SELECT * FROM purchase_log WHERE log_id = ?", (log_id,)).fetchone()
                 if not log: return jsonify({"ok": False, "error": "Log not found"}), 404
-                
-                # واگردانی اثر تراکنش روی انبار (معکوس کردن مقدار قبلی)
-                # اگر ورود بوده (مثبت)، از انبار کم میشود. اگر خروج بوده (منفی)، به انبار اضافه میشود.
                 conn.execute("UPDATE parts SET quantity = quantity - ? WHERE id = ?", (log['quantity_added'], log['part_id']))
-                
-                # حذف لاگ
                 conn.execute("DELETE FROM purchase_log WHERE log_id = ?", (log_id,))
                 conn.commit()
                 return jsonify({"ok": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
 
+    # ------------------------------------------------------------------------------
+    # ویرایش لاگ: تغییر اطلاعات یک تراکنش و اصلاح مابه‌تفاوت روی انبار
+    # ------------------------------------------------------------------------------
     @app.route('/api/log/update', methods=['POST'])
     def update_log_entry() -> Response:
         try:
@@ -594,18 +628,12 @@ def register_routes(app, server_state):
             log_id = data.get('log_id')
             new_qty = float(data.get('quantity_added', 0))
             new_reason = data.get('reason', '')
-            
             with get_db_connection() as conn:
                 old_log = conn.execute("SELECT * FROM purchase_log WHERE log_id = ?", (log_id,)).fetchone()
                 if not old_log: return jsonify({"ok": False, "error": "Log not found"}), 404
-                
-                # اعمال تفاضل مقدار جدید و قدیم روی انبار
-                # مثلا اگر قبلا ۱۰ تا وارد شده و الان کردیم ۱۲ تا، باید ۲ تا به انبار اضافه شود
                 diff = new_qty - old_log['quantity_added']
                 conn.execute("UPDATE parts SET quantity = quantity + ? WHERE id = ?", (diff, old_log['part_id']))
-                
-                # بروزرسانی لاگ
                 conn.execute("UPDATE purchase_log SET quantity_added = ?, reason = ? WHERE log_id = ?", (new_qty, new_reason, log_id))
                 conn.commit()
                 return jsonify({"ok": True})
-        except Exception as e: return jsonify({"error": str(e)}), 500    
+        except Exception as e: return jsonify({"error": str(e)}), 500
