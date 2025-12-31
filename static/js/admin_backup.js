@@ -1,5 +1,6 @@
 // [TAG: MODULE_ADMIN_BACKUP]
 // ماژول بک‌آپ و بازیابی - تفکیک شده از Admin Pages.js
+// نسخه اصلاح شده برای MySQL: پشتیبانی از فایل‌های .sql
 
 const { useState, useEffect, useCallback, useRef } = React;
 
@@ -11,6 +12,7 @@ const BackupPage = () => {
     const dialog = useDialog();
 
     const loadBackups = useCallback(async () => {
+        // دریافت لیست از API (که حالا هر دو فرمت .sql و .db را برمی‌گرداند)
         try { const { ok, data } = await fetchAPI('/backup/list'); if(ok) setBackups(data); } catch(e){}
     }, []);
 
@@ -19,6 +21,13 @@ const BackupPage = () => {
     const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        
+        // تغییر فیلتر برای پذیرش فایل‌های SQL
+        const isSQL = file.name.endsWith('.sql');
+        if (!isSQL && !file.name.endsWith('.db')) {
+            return notify.show('فرمت نامعتبر', 'لطفاً فقط فایل‌های .sql یا .db انتخاب کنید.', 'error');
+        }
+
         const confirmed = await dialog.ask("تایید بازگردانی", `آیا از جایگزینی دیتابیس با فایل "${file.name}" اطمینان دارید؟`, "warning");
         if (confirmed) {
             setLoading(true);
@@ -49,8 +58,7 @@ const BackupPage = () => {
                 body: { username: currentUser } 
             });
             if (ok) {
-                // نمایش مسیر دقیق ذخیره شده به کاربر
-                notify.show('موفقیت', `بک‌آپ در مسیر ${data.full_path} ذخیره شد`, 'success');
+                notify.show('موفقیت', `بک‌آپ جدید با فرمت .sql در سرور ایجاد شد.`, 'success');
                 loadBackups();
             } else {
                 notify.show('خطا', data.error || 'عملیات لغو شد', 'error');
@@ -63,7 +71,7 @@ const BackupPage = () => {
     };
 
     const handleRestore = async (filename) => {
-        if(await dialog.ask("بازگردانی", "با بازگردانی، اطلاعات فعلی جایگزین می‌شود. ادامه می‌دهید؟", "warning")) {
+        if(await dialog.ask("بازگردانی", "با بازگردانی، اطلاعات فعلی MySQL جایگزین می‌شود. ادامه می‌دهید؟", "warning")) {
             setLoading(true);
             try {
                 const { ok, data } = await fetchAPI(`/backup/restore/${filename}`, { method: 'POST' });
@@ -97,16 +105,18 @@ const BackupPage = () => {
     };
 
     const handleDownload = (filename) => {
-        // باز کردن لینک دانلود در یک تب جدید برای شروع دانلود
         window.open(`${API_URL}/backup/download/${filename}`, '_blank');
     };
 
     return (
         <div className="flex-1 p-6 overflow-hidden flex flex-col h-full">
             <header className="mb-6 flex justify-between items-center">
-                <div><h2 className="text-2xl font-bold text-white flex items-center gap-3"><i data-lucide="database-backup" className="w-8 h-8 text-nexus-warning"></i>پشتیبان‌گیری و بازیابی</h2><p className="text-gray-400 text-xs mt-1">مدیریت فایل‌های دیتابیس</p></div>
-                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".db,.bak" className="hidden" />
-                <button onClick={() => fileInputRef.current.click()}disabled={loading}className="bg-white/5 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all duration-300 shadow-lg backdrop-blur-sm group"><i data-lucide="upload" className="w-4 h-4"></i>بازگردانی فایل دستی</button>
+                <div><h2 className="text-2xl font-bold text-white flex items-center gap-3"><i data-lucide="database-backup" className="w-8 h-8 text-nexus-warning"></i>پشتیبان‌گیری و بازیابی</h2><p className="text-gray-400 text-xs mt-1">مدیریت فایل‌های دیتابیس (MySQL & SQLite)</p></div>
+                
+                {/* اصلاح فیلتر پذیرش فایل برای SQL */}
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".sql,.db" className="hidden" />
+                
+                <button onClick={() => fileInputRef.current.click()} disabled={loading} className="bg-white/5 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all duration-300 shadow-lg backdrop-blur-sm group"><i data-lucide="upload" className="w-4 h-4"></i>بازگردانی فایل دستی (.sql)</button>
                 <button onClick={handleCreateBackup} disabled={loading} className="px-6 py-2 bg-nexus-primary hover:bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-900/20 transition flex items-center gap-2 disabled:opacity-50"><i data-lucide="plus-circle" className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`}></i>{loading ? 'در حال ایجاد...' : 'ایجاد بک‌آپ جدید'}</button>
             </header>
 
@@ -130,7 +140,8 @@ const BackupPage = () => {
                                 </div>
                                 <div className="flex justify-between items-center text-[10px] text-gray-500 mb-3 px-1">
                                     <span>حجم: {b.size} KB</span>
-                                    <span className="font-mono ltr text-gray-600">{b.name.replace('nexus_backup_', '').replace('.db', '')}</span>
+                                    {/* اصلاح نمایش نام فایل جهت حذف پسوند .sql یا .db */}
+                                    <span className="font-mono ltr text-gray-600">{b.name.replace('nexus_backup_', '').replace('.sql', '').replace('.db', '')}</span>
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={() => handleDownload(b.name)} className="px-3 py-2 bg-white/5 hover:bg-blue-500 hover:text-white text-blue-400 border border-blue-500/20 rounded-lg transition" title="دانلود روی سیستم">

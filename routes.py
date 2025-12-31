@@ -1,5 +1,5 @@
 # ==============================================================================
-# نسخه: 0.20
+# نسخه: 0.21 (مهاجرت کامل به MySQL - نسخه نهایی و جامع)
 # فایل: routes.py
 # تهیه کننده: ------
 # توضیح توابع و ماژول های استفاده شده در برنامه:
@@ -12,11 +12,12 @@ import os
 import time
 import json
 import shutil
-import sqlite3
+import mysql.connector
+import subprocess
 import threading
 from datetime import datetime
 from flask import jsonify, request, Response, send_file
-from config import DATABASE_FILE, INDEX_FILE, BACKUP_FOLDER, DEFAULT_COMPONENT_CONFIG
+from config import INDEX_FILE, BACKUP_FOLDER, DEFAULT_COMPONENT_CONFIG, DB_CONFIG
 from database import get_db_connection
 from auth_utils import hash_password, parse_permissions_recursive
 from services import fetch_daily_usd_price, USD_CACHE
@@ -80,23 +81,25 @@ def register_routes(app, server_state):
         try:
             data = request.json or {}
             username = data.get('username', 'System')
-            
-            try:
-                conn = get_db_connection()
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                conn.close()
-            except Exception as e:
-                print(f"WAL Checkpoint Error: {e}")
-            
             safe_username = "".join([c for c in username if c.isalnum() or c in ('-','_')])
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            filename = f"nexus_backup_{safe_username}_{timestamp}.db"
-            internal_dest = os.path.join(BACKUP_FOLDER, filename)
+            filename = f"nexus_backup_{safe_username}_{timestamp}.sql"
+            dest_path = os.path.join(BACKUP_FOLDER, filename)
             
-            shutil.copy2(DATABASE_FILE, internal_dest)
+            # استفاده از mysqldump برای پشتیبان‌گیری از MySQL
+            dump_cmd = [
+                'mysqldump',
+                f'--host={DB_CONFIG["host"]}',
+                f'--user={DB_CONFIG["user"]}',
+                f'--password={DB_CONFIG["password"]}',
+                DB_CONFIG["database"]
+            ]
+            
+            with open(dest_path, 'w', encoding='utf-8') as f:
+                subprocess.run(dump_cmd, stdout=f, check=True)
+                
             return jsonify({"success": True, "filename": filename})
-        except Exception as e: 
-            return jsonify({"error": str(e)}), 500
+        except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
     # دانلود بک‌آپ: ارسال فایل دیتابیس مشخص شده به سیستم کلاینت
@@ -117,19 +120,20 @@ def register_routes(app, server_state):
     @app.route('/api/backup/list', methods=['GET'])
     def list_backups():
         try:
-            files = [f for f in os.listdir(BACKUP_FOLDER) if f.endswith('.db')]
+            # جستجو برای هر دو فرمت .sql و .db جهت سازگاری با فایل‌های قدیمی
+            files = [f for f in os.listdir(BACKUP_FOLDER) if f.endswith('.sql') or f.endswith('.db')]
             files.sort(key=lambda x: os.path.getmtime(os.path.join(BACKUP_FOLDER, x)), reverse=True)
             backups = []
             for f in files:
                 path = os.path.join(BACKUP_FOLDER, f)
                 size = os.path.getsize(path) / 1024
-                name_part = f.replace("nexus_backup_", "").replace(".db", "")
-                creator = "سیستم/قدیمی"
+                ext = ".sql" if f.endswith('.sql') else ".db"
+                name_part = f.replace("nexus_backup_", "").replace(ext, "")
+                creator = "سیستم"
                 readable_date = f
                 if len(name_part) >= 19:
                     ts_str = name_part[-19:]
                     if len(name_part) > 20: creator = name_part[:-20]
-                    elif len(name_part) == 19: creator = "System"
                     try: 
                         dt = datetime.strptime(ts_str, "%Y-%m-%d_%H-%M-%S")
                         readable_date = dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -139,7 +143,7 @@ def register_routes(app, server_state):
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
-    # آپلود و بازگردانی: جایگزینی فایل دیتابیس فعلی با فایل آپلود شده توسط کاربر
+    # آپلود و بازگردانی: اجرای اسکریپت SQL آپلود شده روی دیتابیس MySQL
     # ------------------------------------------------------------------------------
     @app.route('/api/backup/restore_upload', methods=['POST'])
     def restore_database_upload():
@@ -147,45 +151,51 @@ def register_routes(app, server_state):
             return jsonify({"success": False, "error": "فایلی ارسال نشده است"}), 400
         
         file = request.files['file']
-        if file.filename == '':
-            return jsonify({"success": False, "error": "نام فایل نامعتبر است"}), 400
+        if not file.filename.endswith('.sql'):
+            return jsonify({"success": False, "error": "فقط فایل‌های .sql مجاز هستند"}), 400
 
         try:
-            try:
-                conn = get_db_connection()
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                conn.close()
-            except: pass
+            temp_path = os.path.join(BACKUP_FOLDER, "temp_restore.sql")
+            file.save(temp_path)
             
-            file.save(DATABASE_FILE)
+            # اجرای دستور mysql برای بازگردانی در MySQL
+            restore_cmd = [
+                'mysql',
+                f'--host={DB_CONFIG["host"]}',
+                f'--user={DB_CONFIG["user"]}',
+                f'--password={DB_CONFIG["password"]}',
+                DB_CONFIG["database"]
+            ]
+            
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                subprocess.run(restore_cmd, stdin=f, check=True)
+            
+            if os.path.exists(temp_path): os.remove(temp_path)
             return jsonify({"success": True, "message": "دیتابیس با موفقیت بازگردانی شد."})
         except Exception as e:
-            return jsonify({"success": False, "error": f"خطا در جایگزینی فایل: {str(e)}"}), 500
+            return jsonify({"success": False, "error": f"خطا در بازگردانی: {str(e)}"}), 500
     
     # ------------------------------------------------------------------------------
-    # بازگردانی داخلی: جایگزینی دیتابیس فعلی با یکی از بک‌آپ‌های ذخیره شده در سرور
+    # بازگردانی داخلی: اجرای یکی از بک‌آپ‌های ذخیره شده در سرور روی دیتابیس
     # ------------------------------------------------------------------------------
     @app.route('/api/backup/restore/<filename>', methods=['POST'])
     def restore_backup(filename: str):
         try:
             src = os.path.join(BACKUP_FOLDER, filename)
-            if not os.path.exists(src): return jsonify({"error": "File not found"}), 404
+            if not os.path.exists(src): return jsonify({"error": "فایل پیدا نشد"}), 404
             
-            try:
-                conn = get_db_connection()
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                conn.close()
-            except: pass
-
-            temp_backup = DATABASE_FILE + ".tmp"
-            if os.path.exists(DATABASE_FILE): shutil.copy2(DATABASE_FILE, temp_backup)
-            try:
-                shutil.copy2(src, DATABASE_FILE)
-                if os.path.exists(temp_backup): os.remove(temp_backup)
-                return jsonify({"success": True})
-            except Exception as e:
-                if os.path.exists(temp_backup): shutil.copy2(temp_backup, DATABASE_FILE)
-                raise e
+            restore_cmd = [
+                'mysql',
+                f'--host={DB_CONFIG["host"]}',
+                f'--user={DB_CONFIG["user"]}',
+                f'--password={DB_CONFIG["password"]}',
+                DB_CONFIG["database"]
+            ]
+            
+            with open(src, 'r', encoding='utf-8') as f:
+                subprocess.run(restore_cmd, stdin=f, check=True)
+                
+            return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -194,9 +204,10 @@ def register_routes(app, server_state):
     @app.route('/api/backup/delete/<filename>', methods=['DELETE'])
     def delete_backup(filename: str):
         try:
-            src = os.path.join(BACKUP_FOLDER, filename); 
-            if not os.path.exists(src): return jsonify({"error": "File not found"}), 404
-            os.remove(src); return jsonify({"success": True})
+            src = os.path.join(BACKUP_FOLDER, filename)
+            if not os.path.exists(src): return jsonify({"error": "فایل پیدا نشد"}), 404
+            os.remove(src)
+            return jsonify({"success": True})
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -215,12 +226,19 @@ def register_routes(app, server_state):
             username = data.get('username')
             password = data.get('password')
             if not username or not password: return jsonify({"success": False, "message": "نام کاربری و رمز عبور الزامی است"}), 400
-            with get_db_connection() as conn:
-                user = conn.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, hash_password(password))).fetchone()
+            
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True) 
+            try:
+                cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, hash_password(password)))
+                user = cursor.fetchone()
                 if user:
                     perms = parse_permissions_recursive(user['permissions'])
                     return jsonify({ "success": True, "role": user['role'], "username": user['username'], "permissions": perms, "full_name": user['full_name'] })
                 return jsonify({"success": False, "message": "نام کاربری یا رمز عبور اشتباه است"}), 401
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -228,14 +246,19 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     @app.route('/api/users', methods=['GET'])
     def get_users():
-        with get_db_connection() as conn:
-            users = conn.execute("SELECT id, username, role, full_name, mobile, permissions FROM users").fetchall()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT id, username, role, full_name, mobile, permissions FROM users")
+            users = cursor.fetchall()
             result = []
             for u in users:
-                d = dict(u)
-                d['permissions'] = parse_permissions_recursive(d['permissions'])
-                result.append(d)
+                u['permissions'] = parse_permissions_recursive(u['permissions'])
+                result.append(u)
             return jsonify(result)
+        finally:
+            cursor.close()
+            conn.close()
 
     # ------------------------------------------------------------------------------
     # ذخیره کاربر: افزودن کاربر جدید یا ویرایش اطلاعات و دسترسی‌های کاربر فعلی
@@ -249,22 +272,30 @@ def register_routes(app, server_state):
             perms_input = d.get('permissions', {})
             if isinstance(perms_input, str): perms_input = parse_permissions_recursive(perms_input)
             perms_json = json.dumps(perms_input)
-            if not username: return jsonify({"error": "Username required"}), 400
-            with get_db_connection() as conn:
+            if not username: return jsonify({"error": "نام کاربری الزامی است"}), 400
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
                 if user_id:
                     if password and password.strip():
-                        conn.execute("UPDATE users SET username=?, password=?, role=?, full_name=?, mobile=?, permissions=? WHERE id=?", 
+                        cursor.execute("UPDATE users SET username=%s, password=%s, role=%s, full_name=%s, mobile=%s, permissions=%s WHERE id=%s", 
                                     (username, hash_password(password), role, full_name, mobile, perms_json, user_id))
                     else:
-                        conn.execute("UPDATE users SET username=?, role=?, full_name=?, mobile=?, permissions=? WHERE id=?", 
+                        cursor.execute("UPDATE users SET username=%s, role=%s, full_name=%s, mobile=%s, permissions=%s WHERE id=%s", 
                                     (username, role, full_name, mobile, perms_json, user_id))
                 else:
-                    if not password: return jsonify({"error": "Password required for new user"}), 400
-                    conn.execute("INSERT INTO users (username, password, role, full_name, mobile, permissions) VALUES (?, ?, ?, ?, ?, ?)", 
+                    if not password: return jsonify({"error": "رمز عبور برای کاربر جدید الزامی است"}), 400
+                    cursor.execute("INSERT INTO users (username, password, role, full_name, mobile, permissions) VALUES (%s, %s, %s, %s, %s, %s)", 
                                 (username, hash_password(password), role, full_name, mobile, perms_json))
                 conn.commit()
                 return jsonify({"success": True})
-        except sqlite3.IntegrityError: return jsonify({"error": "Duplicate username"}), 400
+            finally:
+                cursor.close()
+                conn.close()
+        except mysql.connector.Error as err:
+            if err.errno == 1062: return jsonify({"error": "نام کاربری تکراری است"}), 400
+            return jsonify({"error": str(err)}), 500
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -272,12 +303,18 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     @app.route('/api/users/delete/<int:id>', methods=['DELETE'])
     def delete_user(id: int):
-        with get_db_connection() as conn:
-            target = conn.execute("SELECT username FROM users WHERE id=?", (id,)).fetchone()
-            if target and target['username'] == 'admin': return jsonify({"error": "Cannot delete admin"}), 403
-            conn.execute("DELETE FROM users WHERE id=?", (id,))
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT username FROM users WHERE id=%s", (id,))
+            target = cursor.fetchone()
+            if target and target['username'] == 'admin': return jsonify({"error": "کاربر ادمین اصلی قابل حذف نیست"}), 403
+            cursor.execute("DELETE FROM users WHERE id=%s", (id,))
             conn.commit()
             return jsonify({"success": True})
+        finally:
+            cursor.close()
+            conn.close()
 
     # ------------------------------------------------------------------------------
     # تغییر رمز عبور: به‌روزرسانی گذرواژه کاربر فعلی با تایید رمز عبور قبلی
@@ -288,12 +325,19 @@ def register_routes(app, server_state):
             d = request.json
             username = d.get('username'); old_pass = d.get('old_password'); new_pass = d.get('new_password')
             if not username or not old_pass or not new_pass: return jsonify({"success": False, "message": "اطلاعات ناقص است"}), 400
-            with get_db_connection() as conn:
-                user = conn.execute("SELECT id FROM users WHERE username = ? AND password = ?", (username, hash_password(old_pass))).fetchone()
+            
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT id FROM users WHERE username = %s AND password = %s", (username, hash_password(old_pass)))
+                user = cursor.fetchone()
                 if not user: return jsonify({"success": False, "message": "رمز عبور فعلی اشتباه است"}), 401
-                conn.execute("UPDATE users SET password = ? WHERE id = ?", (hash_password(new_pass), user['id']))
+                cursor.execute("UPDATE users SET password = %s WHERE id = %s", (hash_password(new_pass), user['id']))
                 conn.commit()
                 return jsonify({"success": True})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"success": False, "error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -306,14 +350,20 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     @app.route('/api/settings/config', methods=['GET'])
     def get_config():
-        with get_db_connection() as conn:
-            row = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT `value` FROM app_config WHERE `key` = 'component_config'")
+            row = cursor.fetchone()
             if row: 
                 stored_config = json.loads(row['value'])
                 for key, val in DEFAULT_COMPONENT_CONFIG.items():
                     if key not in stored_config: stored_config[key] = val
                 return jsonify(stored_config)
             return jsonify(DEFAULT_COMPONENT_CONFIG)
+        finally:
+            cursor.close()
+            conn.close()
 
     # ------------------------------------------------------------------------------
     # ذخیره کانفیگ: ثبت تنظیمات جدید و بروزرسانی کدهای انبار در صورت تغییر پیشوند
@@ -322,8 +372,11 @@ def register_routes(app, server_state):
     def save_config():
         try:
             new_config = request.json
-            with get_db_connection() as conn:
-                old_row = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT `value` FROM app_config WHERE `key` = 'component_config'")
+                old_row = cursor.fetchone()
                 if old_row:
                     old_config = json.loads(old_row['value'])
                     for category, settings in new_config.items():
@@ -331,18 +384,26 @@ def register_routes(app, server_state):
                             old_prefix = old_config[category].get('prefix')
                             new_prefix = settings.get('prefix')
                             if old_prefix and new_prefix and old_prefix != new_prefix:
-                                conn.execute(
-                                    "UPDATE parts SET part_code = ? || SUBSTR(part_code, ?) WHERE type = ? AND part_code LIKE ?",
+                                # استفاده از CONCAT در MySQL برای اتصال رشته‌ها
+                                cursor.execute(
+                                    "UPDATE parts SET part_code = CONCAT(%s, SUBSTR(part_code, %s)) WHERE type = %s AND part_code LIKE %s",
                                     (new_prefix, len(old_prefix) + 1, category, f"{old_prefix}%")
                                 )
-                                conn.execute(
-                                    "UPDATE purchase_log SET part_code = ? || SUBSTR(part_code, ?) WHERE type = ? AND part_code LIKE ?",
+                                cursor.execute(
+                                    "UPDATE purchase_log SET part_code = CONCAT(%s, SUBSTR(part_code, %s)) WHERE type = %s AND part_code LIKE %s",
                                     (new_prefix, len(old_prefix) + 1, category, f"{old_prefix}%")
                                 )
 
-                conn.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ('component_config', json.dumps(new_config)))
+                # استفاده از ON DUPLICATE KEY UPDATE در MySQL برای شبیه‌سازی Replace
+                cursor.execute(
+                    "INSERT INTO app_config (`key`, `value`) VALUES (%s, %s) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)", 
+                    ('component_config', json.dumps(new_config))
+                )
                 conn.commit()
                 return jsonify({"success": True})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: 
             return jsonify({"error": str(e)}), 500
 
@@ -354,29 +415,40 @@ def register_routes(app, server_state):
         try:
             d = request.json
             mode = d.get('mode'); old_val = d.get('oldVal'); new_val = d.get('newVal'); category = d.get('category'); list_name = d.get('listName')
-            if not old_val or not new_val: return jsonify({"error": "Empty values"}), 400
-            with get_db_connection() as conn:
-                row = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
-                if not row: return jsonify({"error": "Config error"}), 500
+            if not old_val or not new_val: return jsonify({"error": "مقادیر نمی‌توانند خالی باشند"}), 400
+            
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT `value` FROM app_config WHERE `key` = 'component_config'")
+                row = cursor.fetchone()
+                if not row: return jsonify({"error": "خطا در بارگذاری تنظیمات"}), 500
                 config = json.loads(row['value'])
+                
                 if mode == 'category':
-                    if old_val not in config: return jsonify({"error": "Category not found"}), 404
-                    if new_val in config: return jsonify({"error": "Category exists"}), 400
+                    if old_val not in config: return jsonify({"error": "دسته یافت نشد"}), 404
+                    if new_val in config: return jsonify({"error": "دسته جدید از قبل وجود دارد"}), 400
                     config[new_val] = config.pop(old_val); config[new_val]['label'] = new_val 
-                    conn.execute("UPDATE parts SET type = ? WHERE type = ?", (new_val, old_val))
+                    cursor.execute("UPDATE parts SET type = %s WHERE type = %s", (new_val, old_val))
                 elif mode == 'item':
-                    if category not in config: return jsonify({"error": "Category not found"}), 404
+                    if category not in config: return jsonify({"error": "دسته یافت نشد"}), 404
                     target_list = config[category].get(list_name)
-                    if target_list is None or old_val not in target_list: return jsonify({"error": "Item not found"}), 404
+                    if target_list is None or old_val not in target_list: return jsonify({"error": "آیتم یافت نشد"}), 404
                     idx = target_list.index(old_val); target_list[idx] = new_val
                     col_map = {'packages': 'package', 'techs': 'tech', 'locations': 'storage_location', 'paramOptions': 'watt'}
                     if list_name in col_map:
                         db_col = col_map[list_name]
-                        if category == 'General' and list_name == 'locations': conn.execute(f"UPDATE parts SET {db_col} = ? WHERE {db_col} = ?", (new_val, old_val))
-                        else: conn.execute(f"UPDATE parts SET {db_col} = ? WHERE {db_col} = ? AND type = ?", (new_val, old_val, category))
-                conn.execute("UPDATE app_config SET value = ? WHERE key = 'component_config'", (json.dumps(config),))
+                        if category == 'General' and list_name == 'locations': 
+                            cursor.execute(f"UPDATE parts SET `{db_col}` = %s WHERE `{db_col}` = %s", (new_val, old_val))
+                        else: 
+                            cursor.execute(f"UPDATE parts SET `{db_col}` = %s WHERE `{db_col}` = %s AND type = %s", (new_val, old_val, category))
+                
+                cursor.execute("UPDATE app_config SET `value` = %s WHERE `key` = 'component_config'", (json.dumps(config),))
                 conn.commit()
                 return jsonify({"success": True})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -389,9 +461,15 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     @app.route('/api/parts', methods=['GET'])
     def get_parts():
-        with get_db_connection() as conn:
-            parts = conn.execute('SELECT * FROM parts ORDER BY id DESC').fetchall()
-            return jsonify([dict(p) for p in parts])
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute('SELECT * FROM parts ORDER BY id DESC')
+            parts = cursor.fetchall()
+            return jsonify(parts)
+        finally:
+            cursor.close()
+            conn.close()
 
     # ------------------------------------------------------------------------------
     # ذخیره قطعه: ثبت قطعه جدید، شارژ موجودی یا ویرایش مشخصات فنی
@@ -408,18 +486,22 @@ def register_routes(app, server_state):
             inv_num = d.get("invoice_number", "")
             current_entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            with get_db_connection() as conn:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
                 if part_id:
-                    exists = conn.execute("SELECT id FROM parts WHERE id = ?", (part_id,)).fetchone()
-                    if not exists: part_id = None
+                    cursor.execute("SELECT id FROM parts WHERE id = %s", (part_id,))
+                    if not cursor.fetchone(): part_id = None
                 
-                row_cfg = conn.execute("SELECT value FROM app_config WHERE key = 'component_config'").fetchone()
+                cursor.execute("SELECT `value` FROM app_config WHERE `key` = 'component_config'")
+                row_cfg = cursor.fetchone()
                 config = json.loads(row_cfg['value']) if row_cfg else {}
                 prefix = config.get(d.get("type"), {}).get("prefix", "PRT")
 
                 part_code = d.get("part_code", "")
                 if not part_id and not part_code:
-                    last_row = conn.execute("SELECT part_code FROM parts WHERE type = ? AND part_code LIKE ? ORDER BY part_code DESC LIMIT 1", (d.get("type"), f"{prefix}%")).fetchone()
+                    cursor.execute("SELECT part_code FROM parts WHERE type = %s AND part_code LIKE %s ORDER BY part_code DESC LIMIT 1", (d.get("type"), f"{prefix}%"))
+                    last_row = cursor.fetchone()
                     if last_row and last_row['part_code']:
                         try:
                             last_num_str = last_row['part_code'][len(prefix):]
@@ -440,45 +522,42 @@ def register_routes(app, server_state):
                 }
                 
                 op = 'ENTRY (New)'; qty_change = payload['quantity']
-                dup_sql = "SELECT id, quantity FROM parts WHERE val=? AND watt=? AND tolerance=? AND package=? AND type=? AND tech=? AND storage_location=?"
+                dup_sql = "SELECT id, quantity FROM parts WHERE val=%s AND watt=%s AND tolerance=%s AND package=%s AND type=%s AND tech=%s AND storage_location=%s"
                 dup_params = (payload['val'], payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['tech'], payload['storage_location'])
                 
                 if part_id:
-                    old = conn.execute('SELECT * FROM parts WHERE id = ?', (part_id,)).fetchone()
+                    cursor.execute('SELECT * FROM parts WHERE id = %s', (part_id,))
+                    old = cursor.fetchone()
                     if not old: part_id = None
                     else:
-                        track_fields = {"val": "مقدار", "watt": "پارامتر", "tolerance": "تولرانس", "package": "پکیج", "type": "دسته", "buy_date": "تاریخ خرید", "quantity": "تعداد", "toman_price": "قیمت تومان", "min_quantity": "حداقل موجودی", "vendor_name": "فروشنده", "storage_location": "آدرس", "tech": "تکنولوژی", "usd_rate": "نرخ دلار", "invoice_number": "شماره فاکتور", "purchase_links": "لینک‌ها", "list5": "فیلد۵", "list6": "فیلد۶", "list7": "فیلد۷", "list8": "فیلد۸", "list9": "فیلد۹", "list10": "فیلد۱۰"}
-                        changes = []
-                        for col, label in track_fields.items():
-                            new_v = payload.get(col); old_v = old[col]
-                            if str(old_v if old_v is not None else "") != str(new_v if new_v is not None else ""):
-                                changes.append(f"{label}: {old_v} -> {new_v}")
-                        if not changes: return jsonify({"success": True, "message": "No changes detected"})
-                        detail_summary = " [اصلاح: " + " | ".join(changes) + "]"
-                        payload["reason"] = (payload.get("reason") or "") + detail_summary
-                        existing = conn.execute(dup_sql + " AND id != ?", (*dup_params, part_id)).fetchone()
-                        if existing: return jsonify({"error": "Duplicate part"}), 400
                         old_q = old['quantity']
                         if payload['quantity'] > old_q: op = 'ENTRY (Refill)'
                         elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
                         else: op = 'UPDATE (Edit)'
                         qty_change = payload['quantity'] - old_q
-                        conn.execute("""UPDATE parts SET val=?, watt=?, tolerance=?, package=?, type=?, buy_date=?, quantity=?, toman_price=?, reason=?, min_quantity=?, vendor_name=?, last_modified_by=?, storage_location=?, tech=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=?, list5=?, list6=?, list7=?, list8=?, list9=?, list10=? WHERE id=?""", (*payload.values(), part_id))
+                        
+                        cursor.execute("""UPDATE parts SET val=%s, watt=%s, tolerance=%s, package=%s, type=%s, buy_date=%s, quantity=%s, toman_price=%s, reason=%s, min_quantity=%s, vendor_name=%s, last_modified_by=%s, storage_location=%s, tech=%s, usd_rate=%s, purchase_links=%s, invoice_number=%s, entry_date=%s, part_code=%s, list5=%s, list6=%s, list7=%s, list8=%s, list9=%s, list10=%s WHERE id=%s""", (*payload.values(), part_id))
                         rid = part_id
                 else:
-                    existing = conn.execute(dup_sql, dup_params).fetchone()
+                    cursor.execute(dup_sql, dup_params)
+                    existing = cursor.fetchone()
                     if existing:
                         rid = existing['id']
-                        old_p = conn.execute("SELECT part_code FROM parts WHERE id = ?", (rid,)).fetchone()
+                        cursor.execute("SELECT part_code FROM parts WHERE id = %s", (rid,))
+                        old_p = cursor.fetchone()
                         if old_p and old_p['part_code']: payload['part_code'] = old_p['part_code']
                         new_qty = existing['quantity'] + qty_change; op = 'ENTRY (Refill - Merge)'
-                        conn.execute("UPDATE parts SET quantity=?, toman_price=?, buy_date=?, vendor_name=?, last_modified_by=?, reason=?, usd_rate=?, purchase_links=?, invoice_number=?, entry_date=?, part_code=? WHERE id=?", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], payload['part_code'], rid))
+                        cursor.execute("UPDATE parts SET quantity=%s, toman_price=%s, buy_date=%s, vendor_name=%s, last_modified_by=%s, reason=%s, usd_rate=%s, purchase_links=%s, invoice_number=%s, entry_date=%s, part_code=%s WHERE id=%s", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], payload['part_code'], rid))
                     else:
-                        cur = conn.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date, part_code, list5, list6, list7, list8, list9, list10) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(payload.values())); rid = cur.lastrowid
+                        cursor.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date, part_code, list5, list6, list7, list8, list9, list10) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", tuple(payload.values()))
+                        rid = cursor.lastrowid
                 
-                conn.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number, part_code, list5, list6, list7, list8, list9, list10) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code'], payload['list5'], payload['list6'], payload['list7'], payload['list8'], payload['list9'], payload['list10']))
+                cursor.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number, part_code, list5, list6, list7, list8, list9, list10) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code'], payload['list5'], payload['list6'], payload['list7'], payload['list8'], payload['list9'], payload['list10']))
                 conn.commit()
-            return jsonify({"success": True})
+                return jsonify({"success": True})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
         
     # ------------------------------------------------------------------------------
@@ -488,22 +567,31 @@ def register_routes(app, server_state):
     def withdraw_parts():
         try:
             data = request.json; items = data.get('items', []); project_name = data.get('project', 'General Usage'); username = data.get('username', 'unknown')
-            if not items: return jsonify({"error": "No items selected"}), 400
-            with get_db_connection() as conn:
+            if not items: return jsonify({"error": "قطعه‌ای انتخاب نشده است"}), 400
+            
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
                 for item in items:
                     part_id = item['id']; qty_to_remove = int(item['qty'])
-                    row = conn.execute("SELECT quantity, val FROM parts WHERE id = ?", (part_id,)).fetchone()
-                    if not row: return jsonify({"error": f"Part ID {part_id} not found."}), 404
+                    cursor.execute("SELECT quantity, val FROM parts WHERE id = %s", (part_id,))
+                    row = cursor.fetchone()
+                    if not row: return jsonify({"error": f"قطعه با شناسه {part_id} یافت نشد"}), 404
                     if row['quantity'] < qty_to_remove: return jsonify({"error": f"موجودی ناکافی برای قطعه {row['val']}. (موجودی: {row['quantity']})"}), 400
+                
                 for item in items:
                     part_id = item['id']; qty_to_remove = int(item['qty'])
-                    row = conn.execute("SELECT * FROM parts WHERE id = ?", (part_id,)).fetchone()
+                    cursor.execute("SELECT * FROM parts WHERE id = %s", (part_id,))
+                    row = cursor.fetchone()
                     new_qty = row['quantity'] - qty_to_remove
-                    conn.execute("UPDATE parts SET quantity = ?, last_modified_by = ? WHERE id = ?", (new_qty, username, part_id))
-                    conn.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, part_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+                    cursor.execute("UPDATE parts SET quantity = %s, last_modified_by = %s WHERE id = %s", (new_qty, username, part_id))
+                    cursor.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, part_code) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", 
                             (part_id, row['val'], -qty_to_remove, row['toman_price'], row['vendor_name'], datetime.now().strftime("%Y-%m-%d"), project_name, 'EXIT (Project)', username, row['watt'], row['tolerance'], row['package'], row['type'], row['storage_location'], row['tech'], row['usd_rate'], row['part_code']))
                 conn.commit()
-            return jsonify({"success": True})
+                return jsonify({"success": True})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -511,19 +599,23 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     @app.route('/api/delete/<int:id>', methods=['DELETE'])
     def delete_part(id: int):
-        with get_db_connection() as conn:
-            try:
-                part = conn.execute("SELECT * FROM parts WHERE id=?", (id,)).fetchone()
-                if part: 
-                    conn.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech, part_code) VALUES (?, ?, 0, 'DELETE', 'Deleted by user', ?, ?, ?, ?, ?, ?, ?)""", (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech'], part['part_code']))
-            except: pass
-            conn.execute('DELETE FROM parts WHERE id = ?', (id,))
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT * FROM parts WHERE id=%s", (id,))
+            part = cursor.fetchone()
+            if part: 
+                cursor.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech, part_code) VALUES (%s, %s, 0, 'DELETE', 'Deleted by user', %s, %s, %s, %s, %s, %s, %s)""", (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech'], part['part_code']))
+            cursor.execute('DELETE FROM parts WHERE id = %s', (id,))
             conn.commit()
             return jsonify({"success": True})
+        except Exception as e: return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
     # ------------------------------------------------------------------------------
     # [بخش: مدیریت مخاطبین (Contacts)]
-    # مدیریت تامین‌کنندگان و فروشندگان قطعات.
     # ------------------------------------------------------------------------------
 
     # ------------------------------------------------------------------------------
@@ -531,9 +623,15 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     @app.route('/api/contacts', methods=['GET'])
     def get_contacts():
-        with get_db_connection() as conn:
-            rows = conn.execute('SELECT * FROM contacts ORDER BY name ASC').fetchall()
-            return jsonify([dict(r) for r in rows])
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute('SELECT * FROM contacts ORDER BY name ASC')
+            rows = cursor.fetchall()
+            return jsonify(rows)
+        finally:
+            cursor.close()
+            conn.close()
 
     # ------------------------------------------------------------------------------
     # ذخیره مخاطب: افزودن تامین‌کننده جدید یا ویرایش اطلاعات فعلی
@@ -543,11 +641,19 @@ def register_routes(app, server_state):
         try:
             d = request.json
             params = (d.get("name"), d.get("phone"), d.get("mobile"), d.get("fax"), d.get("website"), d.get("email"), d.get("address"), d.get("notes"))
-            with get_db_connection() as conn:
-                if d.get('id'): conn.execute("UPDATE contacts SET name=?, phone=?, mobile=?, fax=?, website=?, email=?, address=?, notes=? WHERE id=?", (*params, d['id']))
-                else: conn.execute("INSERT INTO contacts (name, phone, mobile, fax, website, email, address, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", params)
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
+                if d.get('id'): 
+                    cursor.execute("UPDATE contacts SET name=%s, phone=%s, mobile=%s, fax=%s, website=%s, email=%s, address=%s, notes=%s WHERE id=%s", (*params, d['id']))
+                else: 
+                    cursor.execute("INSERT INTO contacts (name, phone, mobile, fax, website, email, address, notes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", params)
                 conn.commit()
                 return jsonify({"success": True})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -555,12 +661,18 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     @app.route('/api/contacts/delete/<int:id>', methods=['DELETE'])
     def delete_contact(id: int):
-        with get_db_connection() as conn: conn.execute('DELETE FROM contacts WHERE id = ?', (id,)); conn.commit()
-        return jsonify({"success": True})
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('DELETE FROM contacts WHERE id = %s', (id,))
+            conn.commit()
+            return jsonify({"success": True})
+        finally:
+            cursor.close()
+            conn.close()
 
     # ------------------------------------------------------------------------------
     # [بخش: لاگ و آمار (Logs & Stats)]
-    # دریافت تاریخچه تراکنش‌ها و آمارهای کلیدی انبار.
     # ------------------------------------------------------------------------------
 
     # ------------------------------------------------------------------------------
@@ -568,9 +680,15 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     @app.route('/api/log', methods=['GET'])
     def get_log():
-        with get_db_connection() as conn:
-            rows = conn.execute('SELECT * FROM purchase_log ORDER BY timestamp DESC').fetchall()
-            return jsonify([dict(r) for r in rows])
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute('SELECT * FROM purchase_log ORDER BY timestamp DESC')
+            rows = cursor.fetchall()
+            return jsonify(rows)
+        finally:
+            cursor.close()
+            conn.close()
 
     # ------------------------------------------------------------------------------
     # آمار انبار: محاسبه ارزش سرمایه، قیمت زنده دلار و لیست کسری‌ها
@@ -580,8 +698,12 @@ def register_routes(app, server_state):
         try:
             daily_usd_price = fetch_daily_usd_price()
             usd_date = USD_CACHE.get("date_str", "")
-            with get_db_connection() as conn:
-                rows = conn.execute("SELECT id, val, quantity, toman_price, usd_rate, min_quantity, type, package, storage_location, watt, tolerance, tech, vendor_name, purchase_links, invoice_number, part_code FROM parts").fetchall()
+            
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT id, val, quantity, toman_price, usd_rate, min_quantity, type, package, storage_location, watt, tolerance, tech, vendor_name, purchase_links, invoice_number, part_code FROM parts")
+                rows = cursor.fetchall()
                 total_items = len(rows); total_quantity = 0; total_value_toman_calculated = 0.0; total_value_usd_live = 0.0; shortages = []; categories = {}
                 for row in rows:
                     q = row['quantity'] or 0; p = row['toman_price'] or 0.0; u = row['usd_rate'] or 0.0; min_q = row['min_quantity'] or 0; cat = row['type'] or 'Uncategorized'
@@ -600,7 +722,10 @@ def register_routes(app, server_state):
                 if daily_usd_price > 0: total_value_usd_live = total_value_toman_calculated / daily_usd_price
                 else: total_value_usd_live = 0
                 shortages.sort(key=lambda x: x['qty'])
-                return jsonify({"total_items": total_items, "total_quantity": total_quantity, "total_value_toman": int(total_value_toman_calculated), "total_value_usd_live": round(total_value_usd_live, 2), "live_usd_price": daily_usd_price, "usd_date": usd_date, "shortages": shortages, "categories": categories})   
+                return jsonify({"total_items": total_items, "total_quantity": total_quantity, "total_value_toman": int(total_value_toman_calculated), "total_value_usd_live": round(total_value_usd_live, 2), "live_usd_price": daily_usd_price, "usd_date": usd_date, "shortages": shortages, "categories": categories})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -609,13 +734,19 @@ def register_routes(app, server_state):
     @app.route('/api/log/delete/<int:log_id>', methods=['DELETE'])
     def delete_log_entry(log_id: int) -> Response:
         try:
-            with get_db_connection() as conn:
-                log = conn.execute("SELECT * FROM purchase_log WHERE log_id = ?", (log_id,)).fetchone()
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT * FROM purchase_log WHERE log_id = %s", (log_id,))
+                log = cursor.fetchone()
                 if not log: return jsonify({"ok": False, "error": "Log not found"}), 404
-                conn.execute("UPDATE parts SET quantity = quantity - ? WHERE id = ?", (log['quantity_added'], log['part_id']))
-                conn.execute("DELETE FROM purchase_log WHERE log_id = ?", (log_id,))
+                cursor.execute("UPDATE parts SET quantity = quantity - %s WHERE id = %s", (log['quantity_added'], log['part_id']))
+                cursor.execute("DELETE FROM purchase_log WHERE log_id = %s", (log_id,))
                 conn.commit()
                 return jsonify({"ok": True})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
@@ -628,12 +759,40 @@ def register_routes(app, server_state):
             log_id = data.get('log_id')
             new_qty = float(data.get('quantity_added', 0))
             new_reason = data.get('reason', '')
-            with get_db_connection() as conn:
-                old_log = conn.execute("SELECT * FROM purchase_log WHERE log_id = ?", (log_id,)).fetchone()
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT * FROM purchase_log WHERE log_id = %s", (log_id,))
+                old_log = cursor.fetchone()
                 if not old_log: return jsonify({"ok": False, "error": "Log not found"}), 404
                 diff = new_qty - old_log['quantity_added']
-                conn.execute("UPDATE parts SET quantity = quantity + ? WHERE id = ?", (diff, old_log['part_id']))
-                conn.execute("UPDATE purchase_log SET quantity_added = ?, reason = ? WHERE log_id = ?", (new_qty, new_reason, log_id))
+                cursor.execute("UPDATE parts SET quantity = quantity + %s WHERE id = %s", (diff, old_log['part_id']))
+                cursor.execute("UPDATE purchase_log SET quantity_added = %s, reason = %s WHERE log_id = %s", (new_qty, new_reason, log_id))
                 conn.commit()
                 return jsonify({"ok": True})
+            finally:
+                cursor.close()
+                conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
+    
+    # ------------------------------------------------------------------------------
+    # تنظیمات سرور: خواندن و نوشتن فایل server_config.json
+    # ------------------------------------------------------------------------------
+    @app.route('/api/admin/server-settings', methods=['GET', 'POST'])
+    def server_settings():
+        from database import SERVER_CONFIG_FILE
+        if request.method == 'GET':
+            if os.path.exists(SERVER_CONFIG_FILE):
+                with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    return jsonify(json.load(f))
+            # اگر فایل وجود نداشت، تنظیمات پیش‌فرض را از config برگردان
+            return jsonify(DB_CONFIG)
+        
+        # بخش POST برای ذخیره تنظیمات (که از قبل در admin_server.js داشتی)
+        new_settings = request.json
+        try:
+            with open(SERVER_CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(new_settings, f, indent=4)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500

@@ -8,7 +8,7 @@ const UsersPage = ({ serverStatus }) => {
     
     const defaultPerms = {
         entry: false, withdraw: false, inventory: false, contacts: false,
-        log: false, users: false, management: false, backup: false     
+        log: false, users: false, management: false, backup: false, server: false     
     };
 
     const [newUser, setNewUser] = useState({ 
@@ -145,7 +145,7 @@ const UsersPage = ({ serverStatus }) => {
                                             <div className="pt-4 border-t border-white/10 relative">
                                                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#0f172a] px-2 text-[10px] text-red-400/80 font-bold uppercase border border-red-500/20 rounded-full">مدیریت</div>
                                                 <div className="grid grid-cols-1 gap-2 mt-2">
-                                                    {[{ k: 'users', l: 'مدیریت کاربران' }, { k: 'management', l: 'تنظیمات پایه' }, { k: 'backup', l: 'دیتابیس و بک‌آپ' }].map(p => {
+                                                    {[{ k: 'users', l: 'مدیریت کاربران' }, { k: 'management', l: 'تنظیمات پایه' }, { k: 'backup', l: 'دیتابیس و بک‌آپ' }, { k: 'server', l: 'تنظیمات سرور' }].map(p => {
                                                         const active = !!newUser.permissions?.[p.k];
                                                         return (
                                                             <label key={p.k} className={`cursor-pointer group flex items-center gap-3 p-3 rounded-2xl transition-all border ${active ? 'bg-red-500/10 border-red-500/40' : 'bg-red-500/5 border-transparent hover:bg-red-500/10'}`}>

@@ -1,5 +1,5 @@
 # ==============================================================================
-# نسخه: 0.20
+# نسخه: 0.21 (مهاجرت به MySQL - نسخه نهایی)
 # فایل: services.py
 # تهیه کننده: ------
 # توضیح توابع و ماژول های استفاده شده در برنامه:
@@ -67,12 +67,16 @@ def fetch_daily_usd_price():
                     USD_CACHE["date_str"] = today_str
                     USD_CACHE["status"] = "online"
                     
-                    # ذخیره آخرین قیمت موفق در تنظیمات دیتابیس برای مراجعات بعدی (آفلاین)
+                    # ذخیره آخرین قیمت موفق در تنظیمات دیتابیس (اصلاح شده برای MySQL)
                     try:
-                        with get_db_connection() as conn:
-                            conn.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", 
-                                        ('last_usd_info', json.dumps(USD_CACHE)))
-                            conn.commit()
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        # در MySQL کلمه key رزرو شده است، از بک‌تیک استفاده می‌کنیم
+                        query = "INSERT INTO app_config (`key`, `value`) VALUES (%s, %s) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)"
+                        cursor.execute(query, ('last_usd_info', json.dumps(USD_CACHE)))
+                        conn.commit()
+                        cursor.close()
+                        conn.close()
                     except: pass
                     return price
         except Exception as e: 
@@ -81,13 +85,17 @@ def fetch_daily_usd_price():
     # در صورت شکست در دریافت آنلاین، تلاش برای خواندن آخرین قیمت ذخیره شده در دیتابیس
     if USD_CACHE["price"] == 0:
         try:
-            with get_db_connection() as conn:
-                row = conn.execute("SELECT value FROM app_config WHERE key = 'last_usd_info'").fetchone()
-                if row:
-                    saved_info = json.loads(row['value'])
-                    USD_CACHE["price"] = saved_info.get("price", 0)
-                    USD_CACHE["date_str"] = saved_info.get("date_str", "")
-                    USD_CACHE["status"] = "offline_db"
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT `value` FROM app_config WHERE `key` = %s", ('last_usd_info',))
+            row = cursor.fetchone()
+            if row:
+                saved_info = json.loads(row['value'])
+                USD_CACHE["price"] = saved_info.get("price", 0)
+                USD_CACHE["date_str"] = saved_info.get("date_str", "")
+                USD_CACHE["status"] = "offline_db"
+            cursor.close()
+            conn.close()
         except: pass
     return USD_CACHE["price"]
 

@@ -2,6 +2,7 @@
 // طراحی بصری اختصاصی H&Y با منطق دقیق فایل مرجع
 // اصلاح شده: استفاده از لوگو در پس‌زمینه و افزایش غلظت پنل‌های شیشه‌ای
 // تغییر جدید: عدم نمایش گزینه تغییر گذرواژه برای ادمین در منوی پروفایل
+// سازگاری با MySQL: اضافه شدن روت صفحه تنظیمات سرور
 
 const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
@@ -37,7 +38,7 @@ const NexusToast = ({ isOpen, onClose, title, message, type }) => {
   const isErr = type === 'error';
   const colorClass = isErr ? 'text-red-400' : 'text-blue-400';
   const borderClass = isErr ? 'border-red-500/30' : 'border-blue-500/30';
-  const bgClass = isErr ? 'bg-red-500/20' : 'bg-blue-500/20'; // پررنگ‌تر شد
+  const bgClass = isErr ? 'bg-red-500/20' : 'bg-blue-500/20'; 
   const icon = isErr ? 'alert-triangle' : 'check-circle-2';
 
   const toastBox = (
@@ -251,7 +252,7 @@ const App = () => {
         <ExitDialog isOpen={showExitConfirm} onClose={() => setShowExitConfirm(false)} onConfirm={performExit} onBackupAndExit={performBackupAndExit} title="خروج از سیستم" message="آیا می‌خواهید قبل از خروج، نسخه پشتیبان تهیه شود؟" loading={exitLoading} />
         
         <div className="flex min-h-screen text-gray-300 font-sans relative z-10">
-          {/* Sidebar Design H&Y - افزایش غلظت پس‌زمینه */}
+          {/* Sidebar Design H&Y */}
           <aside className="w-72 flex flex-col border-l border-white/5 bg-[#020617]/95 backdrop-blur-3xl shrink-0 sticky top-0 h-screen shadow-2xl">
             <div className="flex flex-col items-center justify-center border-b border-white/5 py-10 relative">
               <img 
@@ -282,6 +283,7 @@ const App = () => {
               {hasPerm('users') && <button onClick={() => setActiveTab('users')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'users' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="users" className="w-5 h-5"></i> <span className="font-bold">کاربران</span></button>}
               {hasPerm('management') && <button onClick={() => setActiveTab('management')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'management' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="list-checks" className="w-5 h-5"></i> <span className="font-bold">تنظیمات</span></button>}
               {hasPerm('backup') && <button onClick={() => setActiveTab('backup')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'backup' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="database-backup" className="w-5 h-5"></i> <span className="font-bold">پشتیبان‌گیری</span></button>}
+{hasPerm('server') && <button onClick={() => setActiveTab('server')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'server' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="server" className="w-5 h-5"></i> <span className="font-bold">تنظیمات سرور</span></button>}
               
               <div className="h-px bg-white/5 my-6 mx-4"></div>
 
@@ -296,7 +298,7 @@ const App = () => {
           </aside>
 
           <main className="flex-1 flex flex-col min-w-0 bg-transparent">
-            {/* Header - افزایش غلظت */}
+            {/* Header */}
             <header className="h-24 border-b border-white/5 flex items-center justify-between px-12 bg-[#020617]/90 backdrop-blur-3xl sticky top-0 z-40">
                 <div className="flex flex-col">
                     <span className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em]">امروز</span>
@@ -325,7 +327,6 @@ const App = () => {
 
                         {userMenuOpen && (
                             <div className="absolute top-full left-0 mt-3 w-56 bg-[#0f172a]/95 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                {/* نمایش گزینه تغییر گذرواژه فقط برای غیر از ادمین */}
                                 {user.role !== 'admin' && (
                                   <button onClick={() => { setShowPassModal(true); setUserMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-blue-500/20 hover:text-white transition-all font-bold">
                                       <i data-lucide="key" className="w-4 h-4 text-blue-400"></i> تغییر گذرواژه
@@ -353,6 +354,10 @@ const App = () => {
                 {activeTab === 'users' && hasPerm('users') && <UsersPage serverStatus={serverStatus} />}
                 {activeTab === 'management' && hasPerm('management') && <ManagementPage globalConfig={globalConfig} onConfigUpdate={setGlobalConfig} />}
                 {activeTab === 'backup' && hasPerm('backup') && <BackupPage />}
+                
+                {/* بخش جدید: روت صفحه تنظیمات سرور */}
+                {activeTab === 'server' && hasPerm('management') && <ServerSettingsPage serverStatus={serverStatus} />}
+                
                 {activeTab === 'contacts' && hasPerm('contacts') && <ContactsPage serverStatus={serverStatus} />}
                 {activeTab === 'log' && hasPerm('log') && <LogPage />}
               </ErrorBoundary>

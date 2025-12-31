@@ -27,7 +27,16 @@ else:
 # تعریف پورت اتصال، مسیر دیتابیس، پوشه‌های آپلود و بک‌آپ.
 # ------------------------------------------------------------------------------
 API_PORT = 8090
-DATABASE_FILE = os.path.join(BASE_DIR, 'nexus_warehouse.db')
+# تنظیمات دیتابیس MySQL جایگزین فایل SQLite شد
+DB_CONFIG = {
+    'host': '127.0.0.1',
+    'user': 'root',
+    'password': '123456',
+    'database': 'HY',
+    'port': 3306,
+    'charset': 'utf8mb4',
+    'collation': 'utf8mb4_unicode_ci'
+}
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 BACKUP_FOLDER = os.path.join(BASE_DIR, 'backups')
 INDEX_FILE = os.path.join(BASE_DIR, 'index.html')

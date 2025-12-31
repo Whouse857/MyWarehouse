@@ -1,35 +1,43 @@
 # ==============================================================================
-# نسخه: 0.20
+# نسخه: 0.22 (مهاجرت کامل به MySQL - اصلاح شده)
 # فایل: database.py
 # تهیه کننده: ------
 # توضیح توابع و ماژول های استفاده شده در برنامه:
-# این ماژول مسئولیت مدیریت کامل پایگاه داده SQLite سیستم را بر عهده دارد.
+# این ماژول مسئولیت مدیریت کامل پایگاه داده MySQL سیستم را بر عهده دارد.
 # وظایف اصلی آن شامل ایجاد اتصال امن (Connection)، تعریف جداول (Schema)،
 # مدیریت مهاجرت داده‌ها (Migration) و مقداردهی اولیه تنظیمات و کاربر ادمین است.
 # ==============================================================================
 
-import sqlite3
-import json
-from config import DATABASE_FILE, DEFAULT_COMPONENT_CONFIG
+import mysql.connector
+import json 
+import os
+from config import DB_CONFIG, DEFAULT_COMPONENT_CONFIG, BASE_DIR
 from auth_utils import hash_password
+
+# مسیر فایل تنظیمات سرور برای زمانی که دیتابیس توسط ادمین در پنل تغییر یافته است
+SERVER_CONFIG_FILE = os.path.join(BASE_DIR, 'server_config.json')
 
 # ------------------------------------------------------------------------------
 # [تگ: ایجاد اتصال به دیتابیس]
-# این تابع یک اتصال فعال به فایل دیتابیس برقرار کرده و تنظیمات بهینه‌سازی
-# مانند حالت WAL و Synchronous را جهت پایداری و سرعت بیشتر اعمال می‌کند.
+# این تابع یک اتصال فعال به سرور MySQL برقرار می‌کند.
 # ------------------------------------------------------------------------------
-def get_db_connection() -> sqlite3.Connection:
-    """ایجاد اتصال به دیتابیس با تنظیمات بهینه"""
+def get_db_connection():
+    """ایجاد اتصال به دیتابیس MySQL با تنظیمات مشخص شده در config"""
+    # ابتدا بررسی می‌کنیم آیا تنظیمات جدیدی توسط ادمین در فایل محلی ذخیره شده یا خیر
+    current_config = DB_CONFIG.copy()
+    if os.path.exists(SERVER_CONFIG_FILE):
+        try:
+            with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                saved_config = json.load(f)
+                current_config.update(saved_config)
+        except:
+            pass
+
     try:
-        conn = sqlite3.connect(DATABASE_FILE, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        # فعال‌سازی حالت Write-Ahead Logging برای مدیریت بهتر دسترسی‌های همزمان
-        conn.execute('PRAGMA journal_mode=WAL;')
-        # تنظیم همگام‌سازی روی حالت نرمال برای تعادل بین امنیت داده و سرعت
-        conn.execute('PRAGMA synchronous=NORMAL;')
+        conn = mysql.connector.connect(**current_config)
         return conn
-    except sqlite3.Error as e:
-        print(f"[DB ERROR] {e}")
+    except mysql.connector.Error as e:
+        print(f"[DB CONNECTION ERROR] {e}")
         raise e
 
 # ------------------------------------------------------------------------------
@@ -38,15 +46,19 @@ def get_db_connection() -> sqlite3.Connection:
 # در صورت عدم وجود، آن را به ساختار جدول اضافه می‌کند.
 # ------------------------------------------------------------------------------
 def add_column_safe(conn, table_name, column_name, column_type):
-    """افزودن ستون جدید به جدول با بررسی عدم وجود قبلی جهت جلوگیری از خطا"""
+    """افزودن ستون جدید به جدول در MySQL با بررسی عدم وجود قبلی"""
+    cursor = None
     try:
-        cursor = conn.execute(f"PRAGMA table_info({table_name})")
-        columns = [row[1] for row in cursor.fetchall()]
-        if column_name not in columns:
-            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+        cursor = conn.cursor()
+        cursor.execute(f"SHOW COLUMNS FROM `{table_name}` LIKE '{column_name}'")
+        if not cursor.fetchone():
+            cursor.execute(f"ALTER TABLE `{table_name}` ADD COLUMN `{column_name}` {column_type}")
             print(f"[Migration] Added column {column_name} to {table_name}")
     except Exception as e:
         print(f"[Migration Error] {e}")
+    finally:
+        if cursor:
+            cursor.close()
 
 # ------------------------------------------------------------------------------
 # [تگ: مقداردهی اولیه پایگاه داده]
@@ -55,120 +67,100 @@ def add_column_safe(conn, table_name, column_name, column_type):
 # ------------------------------------------------------------------------------
 def init_db():
     """مقداردهی اولیه، ایجاد جداول و مدیریت مهاجرت داده‌ها"""
-    with get_db_connection() as conn:
-        # ۱. ایجاد جدول کاربران (احراز هویت و سطوح دسترسی)
-        conn.execute('''CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # ۱. ایجاد جدول کاربران
+        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(255) UNIQUE NOT NULL,
             password TEXT NOT NULL,
-            role TEXT DEFAULT 'operator',
-            full_name TEXT,
-            mobile TEXT,
+            role VARCHAR(50) DEFAULT 'operator',
+            full_name VARCHAR(255),
+            mobile VARCHAR(20),
             permissions TEXT
-        )''')
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
         # ۲. ایجاد جدول قطعات انبار (اطلاعات فنی و موجودی)
-        conn.execute('''CREATE TABLE IF NOT EXISTS parts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            val TEXT,
-            watt TEXT,
-            tolerance TEXT,
-            package TEXT,
-            type TEXT,
-            buy_date TEXT,
-            quantity INTEGER DEFAULT 0,
-            toman_price REAL DEFAULT 0,
-            reason TEXT,
-            min_quantity INTEGER DEFAULT 1,
-            vendor_name TEXT,
-            last_modified_by TEXT,
-            storage_location TEXT,
-            tech TEXT,
-            usd_rate REAL DEFAULT 0,
-            purchase_links TEXT DEFAULT '[]',
-            invoice_number TEXT,
-            entry_date TEXT,
-            part_code TEXT
-        )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS parts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            val TEXT, watt TEXT, tolerance TEXT, package TEXT, type TEXT,
+            buy_date TEXT, quantity INT DEFAULT 0, toman_price DOUBLE DEFAULT 0,
+            reason TEXT, min_quantity INT DEFAULT 1, vendor_name TEXT,
+            last_modified_by TEXT, storage_location TEXT, tech TEXT,
+            usd_rate DOUBLE DEFAULT 0, purchase_links TEXT, invoice_number TEXT,
+            entry_date TEXT, part_code VARCHAR(100),
+            list5 TEXT, list6 TEXT, list7 TEXT, list8 TEXT, list9 TEXT, list10 TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
         # ۳. ایجاد جدول تاریخچه تراکنش‌ها (لاگ ورود و خروج)
-        conn.execute('''CREATE TABLE IF NOT EXISTS purchase_log (
-            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            part_id INTEGER,
-            val TEXT,
-            quantity_added INTEGER,
-            unit_price REAL,
-            vendor_name TEXT,
-            purchase_date TEXT,
-            reason TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            operation_type TEXT,
-            username TEXT,
-            watt TEXT,
-            tolerance TEXT,
-            package TEXT,
-            type TEXT,
-            storage_location TEXT,
-            tech TEXT,
-            usd_rate REAL,
-            invoice_number TEXT,
-            part_code TEXT
-        )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS purchase_log (
+            log_id INT AUTO_INCREMENT PRIMARY KEY,
+            part_id INT, val TEXT, quantity_added INT, unit_price DOUBLE,
+            vendor_name TEXT, purchase_date TEXT, reason TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, operation_type TEXT,
+            username TEXT, watt TEXT, tolerance TEXT, package TEXT, type TEXT,
+            storage_location TEXT, tech TEXT, usd_rate DOUBLE,
+            invoice_number TEXT, part_code VARCHAR(100),
+            list5 TEXT, list6 TEXT, list7 TEXT, list8 TEXT, list9 TEXT, list10 TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
         # ۴. ایجاد جدول مخاطبین (تامین‌کنندگان و مشتریان)
-        conn.execute('''CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            phone TEXT,
-            mobile TEXT,
-            fax TEXT,
-            website TEXT,
-            email TEXT,
-            address TEXT,
-            notes TEXT
-        )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS contacts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL, phone VARCHAR(50), mobile VARCHAR(50),
+            fax VARCHAR(50), website TEXT, email VARCHAR(255),
+            address TEXT, notes TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
         # ۵. ایجاد جدول تنظیمات سیستمی (ذخیره کانفیگ‌ها بصورت JSON)
-        conn.execute('''CREATE TABLE IF NOT EXISTS app_config (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS app_config (
+            `key` VARCHAR(255) PRIMARY KEY,
+            `value` LONGTEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
         # ۶. ایجاد جدول مدیریت نسخه‌های دیتابیس (Migration Tracking)
-        conn.execute('''CREATE TABLE IF NOT EXISTS migrations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            version TEXT UNIQUE,
+        cursor.execute('''CREATE TABLE IF NOT EXISTS migrations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            version VARCHAR(100) UNIQUE,
             applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''')
-
-        # --- بخش مهاجرت داده‌ها (مدیریت تغییرات در نسخه‌های جدید) ---
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
         
-        # افزودن فیلدهای داینامیک (list5 تا list10) به جداول قطعات و لاگ
+        # --- بخش مهاجرت داده‌ها (مدیریت تغییرات در نسخه‌های جدید) ---
         extra_fields = ['list5', 'list6', 'list7', 'list8', 'list9', 'list10']
         for field in extra_fields:
             add_column_safe(conn, "parts", field, "TEXT")
             add_column_safe(conn, "purchase_log", field, "TEXT")
         
         # بررسی و ایجاد کاربر ادمین پیش‌فرض (در صورت عدم وجود)
-        if not conn.execute("SELECT * FROM users WHERE username = 'admin'").fetchone():
-            admin_perms = json.dumps({
-                "entry": True, "withdraw": True, "inventory": True, 
-                "users": True, "management": True, "backup": True, 
-                "contacts": True, "log": True
-            })
-            conn.execute(
-                "INSERT INTO users (username, password, role, full_name, permissions) VALUES (?, ?, ?, ?, ?)", 
+        cursor.execute("SELECT * FROM users WHERE username = 'admin'")
+        if not cursor.fetchone():
+            admin_perms = json.dumps({"entry": True, "withdraw": True, "inventory": True, "users": True, "management": True, "backup": True, "contacts": True, "log": True})
+            cursor.execute(
+                "INSERT INTO users (username, password, role, full_name, permissions) VALUES (%s, %s, %s, %s, %s)", 
                 ('admin', hash_password('admin'), 'admin', 'مدیر سیستم', admin_perms)
             )
 
         # درج تنظیمات قطعات پیش‌فرض (اگر قبلاً تنظیم نشده باشد)
-        if not conn.execute("SELECT key FROM app_config WHERE key = 'component_config'").fetchone():
-            conn.execute(
-                "INSERT INTO app_config (key, value) VALUES (?, ?)", 
+        cursor.execute("SELECT `key` FROM app_config WHERE `key` = 'component_config'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO app_config (`key`, `value`) VALUES (%s, %s)", 
                 ('component_config', json.dumps(DEFAULT_COMPONENT_CONFIG))
             )
         
         # ایجاد ایندکس یکتا برای کدهای انبار جهت جلوگیری از تکرار و افزایش سرعت جستجو
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_parts_part_code_unique ON parts (part_code) WHERE part_code IS NOT NULL AND part_code != '';")
+        try:
+            cursor.execute("CREATE UNIQUE INDEX idx_parts_part_code_unique ON parts (part_code)")
+        except:
+            pass
 
         conn.commit()
+        cursor.close()
+    except Exception as e:
+        print(f"[INIT DB ERROR] {e}")
+    finally:
+        if conn:
+            conn.close()

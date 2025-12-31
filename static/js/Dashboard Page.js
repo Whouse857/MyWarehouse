@@ -1,6 +1,7 @@
 // [TAG: PAGE_DASHBOARD]
 // صفحه اصلی داشبورد
 // نسخه نهایی: استفاده از تابع hasPerm دریافتی از Main Application برای جلوگیری از کرش
+// تغییر جدید: اضافه شدن کارت تنظیمات سرور MySQL
 
 const DashboardPage = ({ setView, user, hasPerm }) => {
     const isAdmin = user && (user.role === 'admin' || user.username === 'admin');
@@ -14,6 +15,9 @@ const DashboardPage = ({ setView, user, hasPerm }) => {
         { title: "مدیریت کاربران", icon: "users", color: "text-pink-400", desc: "تعریف کاربر و سطح دسترسی", view: "users", reqPerm: 'users' },
         { title: "مدیریت لیست‌ها", icon: "list-checks", color: "text-orange-400", desc: "ویرایش پکیج‌ها و مشخصات", view: "management", reqPerm: 'management' },
         { title: "پشتیبان‌گیری", icon: "database-backup", color: "text-teal-400", desc: "مدیریت فایل‌های بک‌آپ", view: "backup", reqPerm: 'backup' },
+        // --- شروع بخش جدید: کارت تنظیمات سرور ---
+        { title: "تنظیمات سرور", icon: "server", color: "text-blue-400", desc: "مدیریت اتصال به MySQL", view: "server", reqPerm: 'server' },
+        // ---------------------------------------
         { title: "تاریخچه تراکنش‌ها", icon: "history", color: "text-amber-400", desc: "لاگ کامل خرید و ورود", view: "log", full: true, reqPerm: 'log' }
     ];
     
