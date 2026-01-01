@@ -25,6 +25,26 @@ from services import fetch_daily_usd_price, USD_CACHE
 # متغیر کش برای ذخیره محتوای فایل اصلی (Index) جهت بهینه‌سازی سرعت لود
 GLOBAL_INDEX_CACHE = None
 
+
+# [تگ: مبدل تاریخ میلادی به شمسی برای ثبت لحظه خروج]
+def get_current_jalali_date():
+    now = datetime.now()
+    gy, gm, gd = now.year, now.month, now.day
+    g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+    if (gy % 4 == 0 and gy % 100 != 0) or (gy % 400 == 0):
+        g_d_m = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+    jy = 0 if gy <= 1600 else 979
+    gy -= 621 if gy <= 1600 else 1600
+    gy2 = (gm > 2) + gy
+    days = (365 * gy) + (int((gy2 + 3) / 4)) - (int((gy2 + 99) / 100)) + (int((gy2 + 399) / 400)) - 80 + gd + g_d_m[gm - 1]
+    jy += 33 * (int(days / 12053)); days %= 12053; jy += 4 * (int(days / 1461)); days %= 1461
+    jy += int((days - 1) / 365)
+    if days > 365: days = (days - 1) % 365
+    jm = (days // 31) if days < 186 else 6 + ((days - 186) // 30)
+    jd = 1 + (days if jm < 6 else days - 186 - (jm - 6) * 30)
+    return f"{jy}/{jm+1}/{jd}"
+
+
 # ------------------------------------------------------------------------------
 # [تگ: ثبت مسیرهای اصلی برنامه]
 # این تابع تمامی مسیرهای API را به اپلیکیشن Flask معرفی و ثبت می‌کند.
@@ -519,67 +539,82 @@ def register_routes(app, server_state):
     # [تگ: تابع کمکی تشخیص تغییرات]
     # مقایسه داده‌های قدیم و جدید و تولید گزارش متنی از تغییرات برای ثبت در لاگ
     # ------------------------------------------------------------------------------
+    # [تگ: تابع کمکی گزارش تغییرات - نسخه کامل و دقیق]
     def generate_change_report(old_data, new_data):
-        """
-        بررسی هوشمند تغییرات بین داده‌های موجود در دیتابیس (old_data) 
-        و داده‌های ارسالی کاربر (new_data).
-        خروجی: یک رشته متنی شامل تمام تغییرات (با جداکننده |) یا None اگر تغییری نباشد.
-        """
-        if not old_data:
-            return "ثبت اولیه (قطعه جدید)"
-
         changes = []
         
-        # دیکشنری نگاشت نام فیلدها به فارسی
+        # لیست کامل تمام فیلدهایی که باید چک شوند (هیچ موردی حذف نشده است)
         field_labels = {
             'val': 'نام قطعه',
-            'watt': 'مشخصه اول/وات',
-            'tolerance': 'مشخصه دوم/تولرانس',
-            'package': 'پکیج',
-            'type': 'دسته',
-            'storage_location': 'محل نگهداری',
-            'vendor_name': 'فروشنده',
+            'quantity': 'موجودی',
+            'unit': 'واحد',
             'toman_price': 'قیمت (تومان)',
             'usd_rate': 'نرخ دلار',
+            'type': 'دسته',
+            'package': 'پکیج',
+            'tolerance': 'تولرانس',
+            'watt': 'توان/مشخصه',
             'tech': 'تکنولوژی',
+            'vendor_name': 'فروشنده',
+            'storage_location': 'آدرس/محل نگهداری',
             'part_code': 'کد انبار',
             'invoice_number': 'شماره فاکتور',
             'min_quantity': 'حد حداقل',
+            'buy_date': 'تاریخ خرید',
             'purchase_links': 'لینک خرید',
-            'list5': 'فیلد اضافی ۵', 'list6': 'فیلد اضافی ۶', 
-            'list7': 'فیلد اضافی ۷', 'list8': 'فیلد اضافی ۸',
-            'list9': 'فیلد اضافی ۹', 'list10': 'فیلد اضافی ۱۰'
+            'reason': 'دلیل خرید/پروژه',
+            'description': 'توضیحات',
+            'list5': 'فیلد ۵', 'list6': 'فیلد ۶', 'list7': 'فیلد ۷', 
+            'list8': 'فیلد ۸', 'list9': 'فیلد ۹', 'list10': 'فیلد ۱۰'
         }
 
-        # لیست فیلدهایی که باید چک شوند
-        fields_to_check = field_labels.keys()
+        # نگاشت نام‌های احتمالی متفاوت در فرانت‌اند به نام‌های دیتابیس
+        key_map = {
+            'qty': 'quantity', 
+            'price_toman': 'toman_price',
+            'price': 'toman_price',
+            'location': 'storage_location',
+            'pkg': 'package', 
+            'tol': 'tolerance',
+            'desc': 'description',
+            'date': 'buy_date',
+            'min_qty': 'min_quantity'
+        }
 
-        for field in fields_to_check:
-            old_val = old_data.get(field)
-            new_val = new_data.get(field)
+        for key, label in field_labels.items():
+            # دریافت مقدار جدید (اول با کلید اصلی، اگر نبود با کلید جایگزین)
+            new_val = new_data.get(key)
+            if new_val is None:
+                # جستجوی کلید معادل در دیتای ورودی فرانت
+                front_key = next((k for k, v in key_map.items() if v == key), key)
+                new_val = new_data.get(front_key)
 
-            # نرمال‌سازی مقادیر برای مقایسه (تبدیل None به رشته خالی)
-            str_old = str(old_val).strip() if old_val is not None else ""
-            str_new = str(new_val).strip() if new_val is not None else ""
+            # دریافت مقدار قدیم
+            old_val = old_data.get(key)
 
-            # نادیده گرفتن تفاوت‌های جزئی در اعداد اعشاری (مثلاً 100.0 با 100)
+            # تبدیل به رشته و حذف فاصله‌ها برای مقایسه دقیق
+            s_new = str(new_val if new_val is not None else '').strip()
+            s_old = str(old_val if old_val is not None else '').strip()
+
+            # نادیده گرفتن تفاوت‌های جزئی در اعداد اعشاری (مثلاً 100.0 با 100) و None با ''
+            if s_old == 'None': s_old = ''
+            if s_new == 'None': s_new = ''
+            
             try:
-                if float(str_old) == float(str_new): continue
+                # اگر هر دو عدد هستند، مقایسه عددی کن
+                if s_old and s_new and float(s_old) == float(s_new): continue
             except ValueError:
                 pass
-                
-            # اگر واقعاً رشته‌ها فرق داشتند
-            if str_old != str_new:
-                # اگر مقدار قبلی خالی بود، ننویس "از ... به ..."، بنویس "تنظیم شد به ..."
-                if not str_old:
-                    changes.append(f"{field_labels[field]}: {str_new}")
-                else:
-                    changes.append(f"{field_labels[field]}: {str_old} -> {str_new}")
 
-        if not changes:
-            return None
-            
-        return " | ".join(changes)
+            # اگر واقعاً تغییری رخ داده باشد
+            if s_new != s_old:
+                if not s_old:
+                    changes.append(f"{label}: {s_new}")
+                else:
+                    changes.append(f"{label}: {s_old} -> {s_new}")
+                
+        # [نکته مهم]: اگر لیست تغییرات خالی بود، None برمی‌گرداند تا در تابع اصلی لاگ نشود
+        return " | ".join(changes) if changes else None
     
     # ------------------------------------------------------------------------------
     # ذخیره قطعه: ثبت قطعه جدید، شارژ موجودی یا ویرایش مشخصات فنی
@@ -720,37 +755,83 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     # برداشت کالا: ثبت خروج قطعات از انبار برای مصارف پروژه‌ای
     # ------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------
+    # برداشت کالا: ثبت خروج + ثبت توضیحات اصلاح + گزارش تغییر موجودی (هوشمند)
+    # ------------------------------------------------------------------------------
     @app.route('/api/withdraw', methods=['POST'])
     def withdraw_parts():
         try:
-            data = request.json; items = data.get('items', []); project_name = data.get('project', 'General Usage'); username = data.get('username', 'unknown')
+            data = request.json
+            items = data.get('items', [])
+            project_name = data.get('project', 'General Usage')
+            username = data.get('username', 'unknown')
+            
+            # دریافت توضیحات دستی کاربر
+            user_note = data.get('description', '') or data.get('edit_reason', '')
+            
             if not items: return jsonify({"error": "قطعه‌ای انتخاب نشده است"}), 400
             
+            # دریافت تاریخ شمسی و زمان دقیق همان لحظه
+            persian_date = get_current_jalali_date()
+            current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             try:
+                # گام ۱: چک کردن موجودی
                 for item in items:
-                    part_id = item['id']; qty_to_remove = int(item['qty'])
-                    cursor.execute("SELECT quantity, val FROM parts WHERE id = %s", (part_id,))
+                    cursor.execute("SELECT quantity, val FROM parts WHERE id = %s", (item['id'],))
                     row = cursor.fetchone()
-                    if not row: return jsonify({"error": f"قطعه با شناسه {part_id} یافت نشد"}), 404
-                    if row['quantity'] < qty_to_remove: return jsonify({"error": f"موجودی ناکافی برای قطعه {row['val']}. (موجودی: {row['quantity']})"}), 400
+                    if not row: return jsonify({"error": f"قطعه {item['id']} یافت نشد"}), 404
+                    if row['quantity'] < int(item['qty']): 
+                        return jsonify({"error": f"موجودی ناکافی برای قطعه {row['val']}"}), 400
                 
+                # گام ۲: ثبت خروج و لاگ
                 for item in items:
-                    part_id = item['id']; qty_to_remove = int(item['qty'])
+                    part_id = item['id']; qty = int(item['qty'])
                     cursor.execute("SELECT * FROM parts WHERE id = %s", (part_id,))
-                    row = cursor.fetchone()
-                    new_qty = row['quantity'] - qty_to_remove
+                    part = cursor.fetchone()
+                    
+                    # محاسبه مقادیر قبل و بعد برای ثبت در گزارش
+                    old_qty = part['quantity']
+                    new_qty = old_qty - qty
+                    
+                    # تولید گزارش هوشمند (شبیه بخش ورود کالا)
+                    change_report = f"موجودی: {old_qty} -> {new_qty}"
+                    
+                    # ترکیب توضیحات کاربر با گزارش سیستم
+                    final_edit_reason = f"{user_note} | {change_report}" if user_note else change_report
+                    
+                    # کسر موجودی از دیتابیس
                     cursor.execute("UPDATE parts SET quantity = %s, last_modified_by = %s WHERE id = %s", (new_qty, username, part_id))
-                    cursor.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, part_code) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", 
-                            (part_id, row['val'], -qty_to_remove, row['toman_price'], row['vendor_name'], datetime.now().strftime("%Y-%m-%d"), project_name, 'EXIT (Project)', username, row['watt'], row['tolerance'], row['package'], row['type'], row['storage_location'], row['tech'], row['usd_rate'], row['part_code']))
+                    
+                    # ثبت لاگ کامل
+                    log_sql = """INSERT INTO purchase_log (
+                        part_id, val, quantity_added, unit_price, vendor_name, purchase_date, 
+                        reason, edit_reason, operation_type, username, watt, tolerance, package, type, 
+                        storage_location, tech, usd_rate, invoice_number, part_code, timestamp,
+                        list5, list6, list7, list8, list9, list10
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'EXIT (Project)', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                    
+                    cursor.execute(log_sql, (
+                        part_id, part['val'], -qty, part['toman_price'], part['vendor_name'], 
+                        persian_date,       # تاریخ شمسی
+                        project_name,       # دلیل اصلی (پروژه)
+                        final_edit_reason,  # دلیل اصلاح (شامل توضیحات کاربر + تغییر موجودی)
+                        username, part['watt'], part['tolerance'], part['package'], part['type'],
+                        part['storage_location'], part['tech'], part['usd_rate'], part['invoice_number'], 
+                        part['part_code'], 
+                        current_timestamp,  # زمان دقیق
+                        part['list5'], part['list6'], part['list7'], part['list8'], part['list9'], part['list10']
+                    ))
                 conn.commit()
                 return jsonify({"success": True})
             finally:
-                cursor.close()
-                conn.close()
+                cursor.close(); conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
-
+    # ------------------------------------------------------------------------------
+    # حذف قطعه: پاک کردن یک قطعه از لیست + ثبت دقیق در تاریخچه با زمان سرور
+    # ------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------
     # حذف قطعه: پاک کردن یک قطعه از لیست + ثبت دقیق در تاریخچه با زمان سرور
     # ------------------------------------------------------------------------------
@@ -771,18 +852,20 @@ def register_routes(app, server_state):
             
             if part: 
                 # ثبت عملیات حذف در جدول لاگ با تمام جزئیات
+                # اصلاح: اضافه شدن ستون edit_reason به لاگ
                 log_sql = """
                     INSERT INTO purchase_log (
                         part_id, val, quantity_added, unit_price, vendor_name, purchase_date, 
-                        reason, operation_type, username, watt, tolerance, package, type, 
+                        reason, edit_reason, operation_type, username, watt, tolerance, package, type, 
                         storage_location, tech, usd_rate, invoice_number, part_code, timestamp,
                         list5, list6, list7, list8, list9, list10
-                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, 'DELETE', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s, 'DELETE', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 
                 params = (
                     id, part['val'], part['toman_price'], part['vendor_name'], part['buy_date'],
                     'حذف قطعه از انبار', # reason
+                    '', # edit_reason (مقدار خالی برای جلوگیری از خطا)
                     username, part['watt'], part['tolerance'], part['package'], part['type'],
                     part['storage_location'], part['tech'], part['usd_rate'], part['invoice_number'], 
                     part['part_code'], current_timestamp,

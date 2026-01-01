@@ -91,6 +91,87 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     );
 };
 
+
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت دراپ‌داون قابل جستجو]
+// جایگزین Select معمولی برای مدیریت لیست‌های طولانی با قابلیت جستجو و اعتبارسنجی سخت‌گیرانه
+// ----------------------------------------------------------------------------------------------------
+const SearchableDropdown = ({ label, value, options, onChange, disabled, placeholder }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const wrapperRef = useRef(null);
+    const notify = useNotify();
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setIsOpen(false);
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    useEffect(() => { setSearchTerm(value || ""); }, [value]);
+
+    const filteredOptions = (options || []).filter(item => 
+        String(item).toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const handleBlur = () => {
+        setTimeout(() => {
+            const exactMatch = (options || []).find(opt => String(opt) === searchTerm);
+            if (searchTerm && !exactMatch) {
+                notify.show('خطای انتخاب', `مقدار "${searchTerm}" در لیست مجاز نیست.`, 'error');
+                onChange("");
+                setSearchTerm("");
+            }
+            setIsOpen(false);
+        }, 200);
+    };
+
+    return (
+        <div className="relative flex-1" ref={wrapperRef}>
+            <label className="block text-[10px] font-bold text-gray-500 mb-1 pr-1">{label}</label>
+            <div className="relative">
+                {/* اصلاح استایل اینپوت برای هماهنگی با تم Nexus */}
+                <input
+                    type="text"
+                    className={`nexus-input w-full px-3 py-2 text-sm bg-black/20 border-white/10 focus:border-nexus-primary transition-all ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    value={searchTerm}
+                    onChange={(e) => { setSearchTerm(e.target.value); setIsOpen(true); }}
+                    onFocus={() => setIsOpen(true)}
+                    onBlur={handleBlur}
+                    placeholder={placeholder || "انتخاب..."}
+                    disabled={disabled}
+                    dir="ltr"
+                />
+                <div className="absolute left-2 top-2.5 pointer-events-none text-gray-500">
+                    <i data-lucide="chevron-down" className="w-4 h-4"></i>
+                </div>
+            </div>
+
+            {/* اصلاح لیست نتایج: استفاده از تم شیشه‌ای تیره H&Y */}
+            {isOpen && !disabled && (
+                <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto custom-scroll bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                    {filteredOptions.length > 0 ? (
+                        filteredOptions.map((item, idx) => (
+                            <div 
+                                key={idx}
+                                onClick={() => { onChange(item); setSearchTerm(item); setIsOpen(false); }}
+                                className="px-3 py-2 text-sm text-gray-300 hover:bg-nexus-primary/20 hover:text-white cursor-pointer transition-colors border-b border-white/5 last:border-0 font-mono"
+                            >
+                                {item}
+                            </div>
+                        ))
+                    ) : (
+                        <div className="px-3 py-3 text-xs text-red-400 text-center bg-red-500/5">یافت نشد</div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 // ----------------------------------------------------------------------------------------------------
 // [تگ: کامپوننت اصلی صفحه ورود]
 // ----------------------------------------------------------------------------------------------------
@@ -589,9 +670,56 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                         </div>
                                     </div>
                                     <div className="h-px bg-white/5 my-1"></div>
-                                    <div className="flex gap-3"><NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} />{isVisible('units') && (<div className="flex-1"><NexusSelect label={getLabel('units', 'واحد')} options={currentConfig.units} value={formData.unit} onChange={e=>handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} /></div> )}</div>
-                                    <div className="flex gap-3">{isVisible('paramOptions') && (<NexusSelect label={getLabel('paramOptions', currentConfig.paramLabel)} options={currentConfig.paramOptions} value={formData.watt} onChange={e=>handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.watt} />)}<NexusSelect label={getLabel('tolerances', 'تولرانس')} options={currentConfig.tolerances || []} value={formData.tol} onChange={e => handleChange('tol', e.target.value)} className="flex-1" disabled={!serverStatus}error={errors.tol}/></div>
-                                    <div className="flex gap-3">{isVisible('packages') && (<NexusSelect label={getLabel('packages', 'پکیج (Package)') } options={currentConfig.packages} value={formData.pkg} onChange={e=>handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} />)}{isVisible('techs') && (<div className="flex-1"><label className="text-gray-400 text-xs mb-1 block font-medium">{getLabel('techs', 'تکنولوژی/نوع دقیق')}</label><NexusSelect options={currentConfig.techs} value={formData.tech} onChange={e=>handleChange('tech', e.target.value)} disabled={!serverStatus} error={errors.tech} /></div>)}</div>
+                                    <div className="flex gap-3">
+                                        <NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} />
+                                        {isVisible('units') && (
+                                            <SearchableDropdown 
+                                                label={getLabel('units', 'واحد')} 
+                                                options={currentConfig.units} 
+                                                value={formData.unit} 
+                                                onChange={(val)=>handleChange('unit', val)} 
+                                                disabled={!serverStatus} 
+                                            />
+                                        )}
+                                    </div>
+                                    <div className="flex gap-3">
+                                        {isVisible('paramOptions') && (
+                                            <SearchableDropdown 
+                                                label={getLabel('paramOptions', currentConfig.paramLabel)} 
+                                                options={currentConfig.paramOptions} 
+                                                value={formData.watt} 
+                                                onChange={(val)=>handleChange('watt', val)} 
+                                                disabled={!serverStatus} 
+                                            />
+                                        )}
+                                        <SearchableDropdown 
+                                            label={getLabel('tolerances', 'تولرانس')} 
+                                            options={currentConfig.tolerances || []} 
+                                            value={formData.tol} 
+                                            onChange={(val) => handleChange('tol', val)} 
+                                            disabled={!serverStatus} 
+                                        />
+                                    </div>
+                                    <div className="flex gap-3">
+                                        {isVisible('packages') && (
+                                            <SearchableDropdown 
+                                                label={getLabel('packages', 'پکیج (Package)')} 
+                                                options={currentConfig.packages} 
+                                                value={formData.pkg} 
+                                                onChange={(val)=>handleChange('pkg', val)} 
+                                                disabled={!serverStatus} 
+                                            />
+                                        )}
+                                        {isVisible('techs') && (
+                                            <SearchableDropdown 
+                                                label={getLabel('techs', 'تکنولوژی/نوع دقیق')} 
+                                                options={currentConfig.techs} 
+                                                value={formData.tech} 
+                                                onChange={(val)=>handleChange('tech', val)} 
+                                                disabled={!serverStatus} 
+                                            />
+                                        )}
+                                    </div>
                                     
                                     {/* رندر داینامیک فیلدهای اضافه (list5 تا list10) */}
                                     <div className="grid grid-cols-2 gap-3 mt-3">
