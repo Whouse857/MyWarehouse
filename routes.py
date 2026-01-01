@@ -516,6 +516,72 @@ def register_routes(app, server_state):
             conn.close()
 
     # ------------------------------------------------------------------------------
+    # [تگ: تابع کمکی تشخیص تغییرات]
+    # مقایسه داده‌های قدیم و جدید و تولید گزارش متنی از تغییرات برای ثبت در لاگ
+    # ------------------------------------------------------------------------------
+    def generate_change_report(old_data, new_data):
+        """
+        بررسی هوشمند تغییرات بین داده‌های موجود در دیتابیس (old_data) 
+        و داده‌های ارسالی کاربر (new_data).
+        خروجی: یک رشته متنی شامل تمام تغییرات (با جداکننده |) یا None اگر تغییری نباشد.
+        """
+        if not old_data:
+            return "ثبت اولیه (قطعه جدید)"
+
+        changes = []
+        
+        # دیکشنری نگاشت نام فیلدها به فارسی
+        field_labels = {
+            'val': 'نام قطعه',
+            'watt': 'مشخصه اول/وات',
+            'tolerance': 'مشخصه دوم/تولرانس',
+            'package': 'پکیج',
+            'type': 'دسته',
+            'storage_location': 'محل نگهداری',
+            'vendor_name': 'فروشنده',
+            'toman_price': 'قیمت (تومان)',
+            'usd_rate': 'نرخ دلار',
+            'tech': 'تکنولوژی',
+            'part_code': 'کد انبار',
+            'invoice_number': 'شماره فاکتور',
+            'min_quantity': 'حد حداقل',
+            'purchase_links': 'لینک خرید',
+            'list5': 'فیلد اضافی ۵', 'list6': 'فیلد اضافی ۶', 
+            'list7': 'فیلد اضافی ۷', 'list8': 'فیلد اضافی ۸',
+            'list9': 'فیلد اضافی ۹', 'list10': 'فیلد اضافی ۱۰'
+        }
+
+        # لیست فیلدهایی که باید چک شوند
+        fields_to_check = field_labels.keys()
+
+        for field in fields_to_check:
+            old_val = old_data.get(field)
+            new_val = new_data.get(field)
+
+            # نرمال‌سازی مقادیر برای مقایسه (تبدیل None به رشته خالی)
+            str_old = str(old_val).strip() if old_val is not None else ""
+            str_new = str(new_val).strip() if new_val is not None else ""
+
+            # نادیده گرفتن تفاوت‌های جزئی در اعداد اعشاری (مثلاً 100.0 با 100)
+            try:
+                if float(str_old) == float(str_new): continue
+            except ValueError:
+                pass
+                
+            # اگر واقعاً رشته‌ها فرق داشتند
+            if str_old != str_new:
+                # اگر مقدار قبلی خالی بود، ننویس "از ... به ..."، بنویس "تنظیم شد به ..."
+                if not str_old:
+                    changes.append(f"{field_labels[field]}: {str_new}")
+                else:
+                    changes.append(f"{field_labels[field]}: {str_old} -> {str_new}")
+
+        if not changes:
+            return None
+            
+        return " | ".join(changes)
+    
+    # ------------------------------------------------------------------------------
     # ذخیره قطعه: ثبت قطعه جدید، شارژ موجودی یا ویرایش مشخصات فنی
     # ------------------------------------------------------------------------------
     @app.route('/api/save', methods=['POST'])
@@ -523,80 +589,127 @@ def register_routes(app, server_state):
         try:
             d = request.json
             part_id = d.get('id'); username = d.get('username', 'unknown')
+            
+            # تبدیل و پاکسازی اعداد
             raw_price = str(d.get("price", "")).replace(',', ''); price = float(raw_price) if raw_price and raw_price.replace('.', '', 1).isdigit() else 0.0
-            raw_usd = str(d.get("usd_rate", "")).replace(',', '')
-            usd_rate = float(raw_usd) if raw_usd and raw_usd.replace('.', '', 1).isdigit() else 0.0
-            
+            raw_usd = str(d.get("usd_rate", "")).replace(',', ''); usd_rate = float(raw_usd) if raw_usd and raw_usd.replace('.', '', 1).isdigit() else 0.0
             inv_num = d.get("invoice_number", "")
-            current_entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
+            # زمان دقیق سرور
+            now_dt = datetime.now()
+            current_timestamp = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             try:
+                # بررسی وجود ID
                 if part_id:
                     cursor.execute("SELECT id FROM parts WHERE id = %s", (part_id,))
                     if not cursor.fetchone(): part_id = None
                 
-                cursor.execute("SELECT `value` FROM app_config WHERE `key` = 'component_config'")
-                row_cfg = cursor.fetchone()
-                config = json.loads(row_cfg['value']) if row_cfg else {}
-                prefix = config.get(d.get("type"), {}).get("prefix", "PRT")
-
+                # تولید کد قطعه خودکار (اگر جدید باشد)
                 part_code = d.get("part_code", "")
                 if not part_id and not part_code:
+                    cursor.execute("SELECT `value` FROM app_config WHERE `key` = 'component_config'")
+                    row_cfg = cursor.fetchone()
+                    config = json.loads(row_cfg['value']) if row_cfg else {}
+                    prefix = config.get(d.get("type"), {}).get("prefix", "PRT")
+                    
                     cursor.execute("SELECT part_code FROM parts WHERE type = %s AND part_code LIKE %s ORDER BY part_code DESC LIMIT 1", (d.get("type"), f"{prefix}%"))
                     last_row = cursor.fetchone()
+                    next_num = 1
                     if last_row and last_row['part_code']:
-                        try:
-                            last_num_str = last_row['part_code'][len(prefix):]
-                            next_num = int(last_num_str) + 1
-                        except: next_num = 1
-                    else: next_num = 1
+                        try: next_num = int(last_row['part_code'][len(prefix):]) + 1
+                        except: pass
                     part_code = f"{prefix}{str(next_num).zfill(9)}"
 
                 links = d.get("purchase_links", []); links_json = json.dumps(links[:5]) if isinstance(links, list) else "[]"
                 
+                # دیکشنری داده‌های جدید (Payload)
                 payload = {
-                    "val": d.get("val", ""), "watt": d.get("watt", ""), "tolerance": d.get("tol", ""), "package": d.get("pkg", ""), "type": d.get("type", ""), "buy_date": d.get("date", ""),
-                    "quantity": int(d.get("qty") or 0), "toman_price": price, "reason": d.get("reason", ""), "min_quantity": int(d.get("min_qty") or 1), "vendor_name": d.get("vendor_name", ""),
-                    "last_modified_by": username, "storage_location": d.get("location", ""), "tech": d.get("tech", ""), "usd_rate": usd_rate, "purchase_links": links_json,
-                    "invoice_number": inv_num, "entry_date": current_entry_date , "part_code": part_code,
+                    "val": d.get("val", ""), "watt": d.get("watt", ""), "tolerance": d.get("tol", ""), "package": d.get("pkg", ""), "type": d.get("type", ""), 
+                    "buy_date": d.get("date", ""), "quantity": int(d.get("qty") or 0), "toman_price": price, 
+                    "reason": d.get("reason", ""), "min_quantity": int(d.get("min_qty") or 1), "vendor_name": d.get("vendor_name", ""),
+                    "last_modified_by": username, "storage_location": d.get("location", ""), "tech": d.get("tech", ""), 
+                    "usd_rate": usd_rate, "purchase_links": links_json, "invoice_number": inv_num, "entry_date": current_timestamp, "part_code": part_code,
                     "list5": d.get("list5", ""), "list6": d.get("list6", ""), "list7": d.get("list7", ""), 
                     "list8": d.get("list8", ""), "list9": d.get("list9", ""), "list10": d.get("list10", "")
                 }
                 
-                op = 'ENTRY (New)'; qty_change = payload['quantity']
-                dup_sql = "SELECT id, quantity FROM parts WHERE val=%s AND watt=%s AND tolerance=%s AND package=%s AND type=%s AND tech=%s AND storage_location=%s"
-                dup_params = (payload['val'], payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['tech'], payload['storage_location'])
-                
+                rid = None
+                qty_change = payload['quantity']
+                op = 'ENTRY (New)'
+                final_edit_report = "" # متنی که قرار است در ستون edit_reason ذخیره شود
+
+                # --- سناریوی ۱: ویرایش قطعه موجود ---
                 if part_id:
                     cursor.execute('SELECT * FROM parts WHERE id = %s', (part_id,))
-                    old = cursor.fetchone()
-                    if not old: part_id = None
-                    else:
-                        old_q = old['quantity']
-                        if payload['quantity'] > old_q: op = 'ENTRY (Refill)'
-                        elif payload['quantity'] < old_q: op = 'UPDATE (Decrease)'
-                        else: op = 'UPDATE (Edit)'
+                    old_data = cursor.fetchone()
+                    
+                    if old_data:
+                        # محاسبه تغییر تعداد
+                        old_q = old_data['quantity']
                         qty_change = payload['quantity'] - old_q
                         
+                        if qty_change > 0: op = 'ENTRY (Refill)'
+                        elif qty_change < 0: op = 'UPDATE (Decrease)'
+                        else: op = 'UPDATE (Edit)'
+                        
+                        # [استفاده از تابع هوشمند] تولید گزارش تغییرات
+                        final_edit_report = generate_change_report(old_data, payload)
+                        
+                        # قانون مهم: اگر هیچ چیزی تغییر نکرده، عملیات را کنسل کن
+                        if qty_change == 0 and not final_edit_report:
+                            return jsonify({"success": True, "message": "No changes detected"})
+
+                        # انجام آپدیت در جدول parts
                         cursor.execute("""UPDATE parts SET val=%s, watt=%s, tolerance=%s, package=%s, type=%s, buy_date=%s, quantity=%s, toman_price=%s, reason=%s, min_quantity=%s, vendor_name=%s, last_modified_by=%s, storage_location=%s, tech=%s, usd_rate=%s, purchase_links=%s, invoice_number=%s, entry_date=%s, part_code=%s, list5=%s, list6=%s, list7=%s, list8=%s, list9=%s, list10=%s WHERE id=%s""", (*payload.values(), part_id))
                         rid = part_id
-                else:
+
+                # --- سناریوی ۲: قطعه جدید (یا ادغام) ---
+                if not rid:
+                    # چک کردن تکراری بودن
+                    dup_sql = "SELECT id, quantity FROM parts WHERE val=%s AND watt=%s AND tolerance=%s AND package=%s AND type=%s AND tech=%s AND storage_location=%s"
+                    dup_params = (payload['val'], payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['tech'], payload['storage_location'])
                     cursor.execute(dup_sql, dup_params)
                     existing = cursor.fetchone()
+                    
                     if existing:
+                        # ادغام با موجودی قبلی
                         rid = existing['id']
-                        cursor.execute("SELECT part_code FROM parts WHERE id = %s", (rid,))
-                        old_p = cursor.fetchone()
-                        if old_p and old_p['part_code']: payload['part_code'] = old_p['part_code']
-                        new_qty = existing['quantity'] + qty_change; op = 'ENTRY (Refill - Merge)'
+                        new_qty = existing['quantity'] + qty_change
+                        op = 'ENTRY (Refill - Merge)'
+                        final_edit_report = "افزایش موجودی از طریق ادغام با قطعه جدید"
+                        
+                        # حفظ کد قطعه قدیمی
+                        cursor.execute("SELECT part_code FROM parts WHERE id=%s", (rid,))
+                        p_code_row = cursor.fetchone()
+                        if p_code_row and p_code_row['part_code']: payload['part_code'] = p_code_row['part_code']
+
                         cursor.execute("UPDATE parts SET quantity=%s, toman_price=%s, buy_date=%s, vendor_name=%s, last_modified_by=%s, reason=%s, usd_rate=%s, purchase_links=%s, invoice_number=%s, entry_date=%s, part_code=%s WHERE id=%s", (new_qty, payload['toman_price'], payload['buy_date'], payload['vendor_name'], username, payload['reason'], payload['usd_rate'], payload['purchase_links'], payload['invoice_number'], payload['entry_date'], payload['part_code'], rid))
                     else:
+                        # کاملاً جدید
+                        final_edit_report = "ثبت اولیه قطعه"
                         cursor.execute("INSERT INTO parts (val, watt, tolerance, package, type, buy_date, quantity, toman_price, reason, min_quantity, vendor_name, last_modified_by, storage_location, tech, usd_rate, purchase_links, invoice_number, entry_date, part_code, list5, list6, list7, list8, list9, list10) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", tuple(payload.values()))
                         rid = cursor.lastrowid
                 
-                cursor.execute("INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, vendor_name, purchase_date, reason, operation_type, username, watt, tolerance, package, type, storage_location, tech, usd_rate, invoice_number, part_code, list5, list6, list7, list8, list9, list10) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", (rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'], payload['reason'], op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'], payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code'], payload['list5'], payload['list6'], payload['list7'], payload['list8'], payload['list9'], payload['list10']))
+                # ثبت در لاگ با گزارش کامل تغییرات
+                log_sql = """
+                    INSERT INTO purchase_log (
+                        part_id, val, quantity_added, unit_price, vendor_name, purchase_date, 
+                        reason, edit_reason, operation_type, username, watt, tolerance, package, type, 
+                        storage_location, tech, usd_rate, invoice_number, part_code, timestamp,
+                        list5, list6, list7, list8, list9, list10
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                log_params = (
+                    rid, payload['val'], qty_change, payload['toman_price'], payload['vendor_name'], payload['buy_date'],
+                    payload['reason'], final_edit_report, op, username, payload['watt'], payload['tolerance'], payload['package'], payload['type'],
+                    payload['storage_location'], payload['tech'], payload['usd_rate'], inv_num, payload['part_code'], current_timestamp,
+                    payload['list5'], payload['list6'], payload['list7'], payload['list8'], payload['list9'], payload['list10']
+                )
+                
+                cursor.execute(log_sql, log_params)
                 conn.commit()
                 return jsonify({"success": True})
             finally:
@@ -639,17 +752,45 @@ def register_routes(app, server_state):
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # ------------------------------------------------------------------------------
-    # حذف قطعه: پاک کردن یک قطعه از لیست کالاهای انبار
+    # حذف قطعه: پاک کردن یک قطعه از لیست + ثبت دقیق در تاریخچه با زمان سرور
     # ------------------------------------------------------------------------------
     @app.route('/api/delete/<int:id>', methods=['DELETE'])
     def delete_part(id: int):
+        # تلاش برای دریافت نام کاربر از پارامترهای URL (چون متد DELETE بدنه ندارد)
+        username = request.args.get('username', 'unknown')
+        
+        # زمان دقیق برای ثبت در لاگ
+        now_dt = datetime.now()
+        current_timestamp = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         try:
             cursor.execute("SELECT * FROM parts WHERE id=%s", (id,))
             part = cursor.fetchone()
+            
             if part: 
-                cursor.execute("""INSERT INTO purchase_log (part_id, val, quantity_added, operation_type, reason, watt, tolerance, package, type, storage_location, tech, part_code) VALUES (%s, %s, 0, 'DELETE', 'Deleted by user', %s, %s, %s, %s, %s, %s, %s)""", (id, part['val'], part['watt'], part['tolerance'], part['package'], part['type'], part['storage_location'], part['tech'], part['part_code']))
+                # ثبت عملیات حذف در جدول لاگ با تمام جزئیات
+                log_sql = """
+                    INSERT INTO purchase_log (
+                        part_id, val, quantity_added, unit_price, vendor_name, purchase_date, 
+                        reason, operation_type, username, watt, tolerance, package, type, 
+                        storage_location, tech, usd_rate, invoice_number, part_code, timestamp,
+                        list5, list6, list7, list8, list9, list10
+                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, 'DELETE', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                
+                params = (
+                    id, part['val'], part['toman_price'], part['vendor_name'], part['buy_date'],
+                    'حذف قطعه از انبار', # reason
+                    username, part['watt'], part['tolerance'], part['package'], part['type'],
+                    part['storage_location'], part['tech'], part['usd_rate'], part['invoice_number'], 
+                    part['part_code'], current_timestamp,
+                    part['list5'], part['list6'], part['list7'], part['list8'], part['list9'], part['list10']
+                )
+                
+                cursor.execute(log_sql, params)
+
             cursor.execute('DELETE FROM parts WHERE id = %s', (id,))
             conn.commit()
             return jsonify({"success": True})
@@ -722,6 +863,9 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     # دریافت لاگ: مشاهده تاریخچه کامل ورود و خروج کالاها
     # ------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------
+    # دریافت لاگ: اصلاح شده برای تبدیل فرمت زمان و جلوگیری از خطای JSON
+    # ------------------------------------------------------------------------------
     @app.route('/api/log', methods=['GET'])
     def get_log():
         conn = get_db_connection()
@@ -729,6 +873,12 @@ def register_routes(app, server_state):
         try:
             cursor.execute('SELECT * FROM purchase_log ORDER BY timestamp DESC')
             rows = cursor.fetchall()
+            
+            # تبدیل datetime به رشته (چون json نمیتواند datetime را سریالایز کند)
+            for row in rows:
+                if row.get('timestamp'):
+                    row['timestamp'] = str(row['timestamp'])
+                    
             return jsonify(rows)
         finally:
             cursor.close()
@@ -796,22 +946,34 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     # ویرایش لاگ: تغییر اطلاعات یک تراکنش و اصلاح مابه‌تفاوت روی انبار
     # ------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------
+    # ویرایش لاگ: اصلاح شده برای ثبت "دلیل ویرایش" در ستون جداگانه
+    # ------------------------------------------------------------------------------
     @app.route('/api/log/update', methods=['POST'])
     def update_log_entry() -> Response:
         try:
             data = request.get_json()
             log_id = data.get('log_id')
             new_qty = float(data.get('quantity_added', 0))
-            new_reason = data.get('reason', '')
+            new_reason = data.get('reason', '') # دلیل اصلی (مثلا نام پروژه)
+            edit_note = data.get('edit_reason', '') # دلیل ویرایش (مثلا اشتباه تایپی) - ستون جدید
+            
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             try:
                 cursor.execute("SELECT * FROM purchase_log WHERE log_id = %s", (log_id,))
                 old_log = cursor.fetchone()
                 if not old_log: return jsonify({"ok": False, "error": "Log not found"}), 404
+                
+                # اصلاح موجودی انبار
                 diff = new_qty - old_log['quantity_added']
                 cursor.execute("UPDATE parts SET quantity = quantity + %s WHERE id = %s", (diff, old_log['part_id']))
-                cursor.execute("UPDATE purchase_log SET quantity_added = %s, reason = %s WHERE log_id = %s", (new_qty, new_reason, log_id))
+                
+                # بروزرسانی لاگ: ثبت دلیل اصلی و دلیل ویرایش در ستون‌های جداگانه
+                cursor.execute(
+                    "UPDATE purchase_log SET quantity_added = %s, reason = %s, edit_reason = %s WHERE log_id = %s", 
+                    (new_qty, new_reason, edit_note, log_id)
+                )
                 conn.commit()
                 return jsonify({"ok": True})
             finally:

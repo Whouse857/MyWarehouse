@@ -418,12 +418,21 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     };
     
     // ------------------------------------------------------------------------------------------------
-    // [تگ: حذف قطعه]
-    // حذف قطعه با درخواست DELETE به سرور.
+    // [تگ: حذف قطعه - اصلاح شده]
+    // حذف قطعه با ارسال نام کاربر جهت ثبت در لاگ تاریخچه
     // ------------------------------------------------------------------------------------------------
     const handleDelete = async (id) => { 
         const confirmed = await dialog.ask("حذف قطعه", "آیا از حذف این قطعه از انبار اطمینان دارید؟", "danger");
-        if(confirmed) { try { await fetchAPI(`/delete/${id}`, { method: 'DELETE' }); loadData(); notify.show('حذف شد', 'قطعه با موفقیت حذف شد.', 'success'); } catch(e) {} } 
+        if(confirmed) { 
+            try { 
+                // اصلاح: ارسال username در کوئری استرینگ
+                await fetchAPI(`/delete/${id}?username=${user.username}`, { method: 'DELETE' }); 
+                loadData(); 
+                notify.show('حذف شد', 'قطعه با موفقیت حذف شد و در تاریخچه ثبت گردید.', 'success'); 
+            } catch(e) {
+                notify.show('خطا', 'مشکل در حذف قطعه', 'error');
+            } 
+        } 
     };
 
     // تنظیمات دسته جاری (انتخاب شده در دراپ‌داون)
