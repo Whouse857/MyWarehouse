@@ -4,6 +4,8 @@
     "password": "123456",
     "database": "HY",
     "port": 3306,
+    "mysqldump_path": "C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin\\mysqldump.exe",
+    "mysql_client_path": "C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin\\mysql.exe",
     "charset": "utf8mb4",
     "collation": "utf8mb4_unicode_ci"
 }

@@ -76,6 +76,10 @@ def register_routes(app, server_state):
     # ------------------------------------------------------------------------------
     # ایجاد بک‌آپ: تهیه نسخه کپی از دیتابیس فعلی با نام کاربر و برچسب زمانی
     # ------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------
+    # [تگ: ایجاد بک‌آپ - نسخه امن]
+    # اصلاح شده: استفاده از متغیر محیطی برای رمز عبور (رفع وارنینگ امنیتی MySQL)
+    # ------------------------------------------------------------------------------
     @app.route('/api/backup/create', methods=['POST'])
     def create_backup():
         try:
@@ -86,9 +90,8 @@ def register_routes(app, server_state):
             filename = f"HY_backup_{safe_username}_{timestamp}.sql"
             dest_path = os.path.join(BACKUP_FOLDER, filename)
             
-            # --- خواندن تنظیمات ---
+            # 1. خواندن تنظیمات
             current_conf = DB_CONFIG.copy()
-            # مقادیر پیش‌فرض مسیرها (برای اینکه اگر تنظیم نشده بود، روی سیستم فعلی کار کند)
             mysqldump_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe"
             
             if os.path.exists(SERVER_CONFIG_FILE):
@@ -96,22 +99,28 @@ def register_routes(app, server_state):
                     with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
                         saved = json.load(f)
                         current_conf.update(saved)
-                        # اگر کاربر مسیر جدید داده بود، جایگزین کن
                         if saved.get('mysqldump_path'):
-                            mysqldump_path = saved.get('mysqldump_path')
+                            mysqldump_path = saved['mysqldump_path']
                 except: pass
 
+            # 2. آماده‌سازی متغیر محیطی برای رمز عبور (روش امن)
+            # به جای اینکه رمز را در دستور بنویسیم، در محیط سیستم‌عامل موقتاً ست می‌کنیم
+            env = os.environ.copy()
+            env['MYSQL_PWD'] = current_conf["password"]  # رمز عبور اینجا مخفیانه داده می‌شود
+
+            # 3. دستور اجرا (بدون پارامتر پسورد)
             dump_cmd = [
                 mysqldump_path,
                 f'--host={current_conf["host"]}',
                 f'--user={current_conf["user"]}',
-                f'--password={current_conf["password"]}',
+                # خط پسورد حذف شد چون از طریق محیط (ENV) خوانده می‌شود
                 f'--port={current_conf["port"]}',
                 current_conf["database"]
             ]
             
+            # 4. اجرا با پاس دادن متغیر محیطی (env)
             with open(dest_path, 'w', encoding='utf-8') as f:
-                subprocess.run(dump_cmd, stdout=f, check=True)
+                subprocess.run(dump_cmd, stdout=f, env=env, check=True)
                 
             return jsonify({"success": True, "filename": filename})
         except Exception as e: return jsonify({"error": str(e)}), 500

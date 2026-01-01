@@ -22,23 +22,31 @@ SERVER_CONFIG_FILE = os.path.join(BASE_DIR, 'server_config.json')
 # این تابع یک اتصال فعال به سرور MySQL برقرار می‌کند.
 # ------------------------------------------------------------------------------
 def get_db_connection():
-    """ایجاد اتصال به دیتابیس MySQL با تنظیمات مشخص شده در config"""
-    # ابتدا بررسی می‌کنیم آیا تنظیمات جدیدی توسط ادمین در فایل محلی ذخیره شده یا خیر
-    current_config = DB_CONFIG.copy()
+    """ایجاد اتصال به دیتابیس MySQL با فیلتر کردن پارامترهای اضافی"""
+    
+    # 1. تنظیمات پیش‌فرض
+    config_data = DB_CONFIG.copy()
+
+    # 2. اگر فایل تنظیمات وجود دارد، آن را بخوان و روی پیش‌فرض‌ها بریز
     if os.path.exists(SERVER_CONFIG_FILE):
         try:
             with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                saved_config = json.load(f)
-                current_config.update(saved_config)
-        except:
-            pass
+                saved = json.load(f)
+                config_data.update(saved)
+        except: pass
 
-    try:
-        conn = mysql.connector.connect(**current_config)
-        return conn
-    except mysql.connector.Error as e:
-        print(f"[DB CONNECTION ERROR] {e}")
-        raise e
+    # 3. (مهم) فقط پارامترهای استاندارد اتصال را جدا کن
+    # این دیکشنری فقط چیزهایی که MySQL لازم دارد را نگه می‌دارد
+    clean_params = {
+        'host': config_data.get('host', '127.0.0.1'),
+        'user': config_data.get('user', 'root'),
+        'password': config_data.get('password', ''),
+        'database': config_data.get('database', 'HY'),
+        'port': int(config_data.get('port', 3306))
+    }
+
+    # 4. حالا با خیال راحت وصل شو (بدون پارامترهای اضافی مثل mysqldump_path)
+    return mysql.connector.connect(**clean_params)
 
 # ------------------------------------------------------------------------------
 # [تگ: افزودن ستون به صورت ایمن]
