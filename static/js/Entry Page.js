@@ -96,7 +96,11 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
 // [تگ: کامپوننت دراپ‌داون قابل جستجو]
 // جایگزین Select معمولی برای مدیریت لیست‌های طولانی با قابلیت جستجو و اعتبارسنجی سخت‌گیرانه
 // ----------------------------------------------------------------------------------------------------
-const SearchableDropdown = ({ label, value, options, onChange, disabled, placeholder }) => {
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت دراپ‌داون قابل جستجو]
+// اصلاح شده: اضافه شدن دریافت prop خطا (error) برای قرمز کردن کادر
+// ----------------------------------------------------------------------------------------------------
+const SearchableDropdown = ({ label, value, options, onChange, disabled, placeholder, error }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const wrapperRef = useRef(null);
@@ -130,12 +134,11 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
 
     return (
         <div className="relative flex-1" ref={wrapperRef}>
-            <label className="block text-[10px] font-bold text-gray-500 mb-1 pr-1">{label}</label>
+            <label className={`block text-[10px] font-bold mb-1 pr-1 ${error ? 'text-red-400' : 'text-gray-500'}`}>{label}</label>
             <div className="relative">
-                {/* اصلاح استایل اینپوت برای هماهنگی با تم Nexus */}
                 <input
                     type="text"
-                    className={`nexus-input w-full px-3 py-2 text-sm bg-black/20 border-white/10 focus:border-nexus-primary transition-all ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`nexus-input w-full px-3 py-2 text-sm transition-all ${error ? '!border-red-500 focus:!border-red-500 bg-red-500/10 placeholder-red-300/50' : 'bg-black/20 border-white/10 focus:border-nexus-primary'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                     value={searchTerm}
                     onChange={(e) => { setSearchTerm(e.target.value); setIsOpen(true); }}
                     onFocus={() => setIsOpen(true)}
@@ -144,12 +147,11 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
                     disabled={disabled}
                     dir="ltr"
                 />
-                <div className="absolute left-2 top-2.5 pointer-events-none text-gray-500">
+                <div className={`absolute left-2 top-2.5 pointer-events-none ${error ? 'text-red-400' : 'text-gray-500'}`}>
                     <i data-lucide="chevron-down" className="w-4 h-4"></i>
                 </div>
             </div>
 
-            {/* اصلاح لیست نتایج: استفاده از تم شیشه‌ای تیره H&Y */}
             {isOpen && !disabled && (
                 <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto custom-scroll bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-100">
                     {filteredOptions.length > 0 ? (
@@ -366,15 +368,28 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     // بررسی صحت اطلاعات قبل از ارسال به سرور.
     // این بخش هم فیلدهای ثابت (مثل قیمت) و هم فیلدهای داینامیک (بر اساس تنظیمات ادمین) را چک می‌کند.
     // ------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: اعتبارسنجی فرم]
+    // اصلاح شده: افزودن بررسی الزامی بودن حداقل موجودی و قیمت دلار
+    // ------------------------------------------------------------------------------------------------
     const handleSubmit = () => {
         const newErrors = {};
         const typeConfig = globalConfig?.[formData.type] || {}; 
 
         // 1. بررسی فیلدهای ثابت همیشگی
         if(!formData.val) newErrors.val = true;
-        // اجازه ثبت با تعداد صفر داده می‌شود، اما فیلد نباید خالی یا منفی باشد
+        
+        // بررسی تعداد (qty)
         if(formData.qty === "" || Number(formData.qty) < 0) newErrors.qty = true;
         
+        // --- تغییرات جدید: بررسی حداقل و قیمت دلار ---
+        // بررسی حداقل موجودی (min_qty)
+        if(formData.min_qty === "" || Number(formData.min_qty) < 0) newErrors.min_qty = true;
+
+        // بررسی قیمت دلار (usd_rate)
+        if(!formData.usd_rate) newErrors.usd_rate = true;
+        // ---------------------------------------------
+
         // بررسی الزامی بودن آدرس از تنظیمات General
         const locSetting = globalConfig?.["General"]?.fields?.['locations'];
         const isLocRequired = locSetting ? locSetting.required : true; // اگر تنظیم نشده بود، پیش‌فرض الزامی است
@@ -393,7 +408,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
             const isVisible = fieldConfig ? fieldConfig.visible : isDefaultVisible;
             
             // منطق الزامی بودن
-            const isDefaultRequired = ['units','packages'].includes(field.key); // مثلا یونیت و پکیج ذاتا مهم‌اند
+            const isDefaultRequired = ['units','packages'].includes(field.key);
             const isRequired = fieldConfig ? fieldConfig.required : isDefaultRequired;
 
             if (isVisible && isRequired) {
@@ -678,7 +693,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                                 options={currentConfig.units} 
                                                 value={formData.unit} 
                                                 onChange={(val)=>handleChange('unit', val)} 
-                                                disabled={!serverStatus} 
+                                                disabled={!serverStatus}
+                                                error={errors.unit} 
                                             />
                                         )}
                                     </div>
@@ -689,7 +705,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                                 options={currentConfig.paramOptions} 
                                                 value={formData.watt} 
                                                 onChange={(val)=>handleChange('watt', val)} 
-                                                disabled={!serverStatus} 
+                                                disabled={!serverStatus}
+                                                error={errors.watt} 
                                             />
                                         )}
                                         <SearchableDropdown 
@@ -697,7 +714,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                             options={currentConfig.tolerances || []} 
                                             value={formData.tol} 
                                             onChange={(val) => handleChange('tol', val)} 
-                                            disabled={!serverStatus} 
+                                            disabled={!serverStatus}
+                                            error={errors.tol} 
                                         />
                                     </div>
                                     <div className="flex gap-3">
@@ -707,7 +725,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                                 options={currentConfig.packages} 
                                                 value={formData.pkg} 
                                                 onChange={(val)=>handleChange('pkg', val)} 
-                                                disabled={!serverStatus} 
+                                                disabled={!serverStatus}
+                                                error={errors.pkg} 
                                             />
                                         )}
                                         {isVisible('techs') && (
@@ -716,7 +735,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                                 options={currentConfig.techs} 
                                                 value={formData.tech} 
                                                 onChange={(val)=>handleChange('tech', val)} 
-                                                disabled={!serverStatus} 
+                                                disabled={!serverStatus}
+                                                error={errors.tech} 
                                             />
                                         )}
                                     </div>
