@@ -145,7 +145,7 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
                     onBlur={handleBlur}
                     placeholder={placeholder || "انتخاب..."}
                     disabled={disabled}
-                    dir="ltr"
+                    dir="rtl"
                 />
                 <div className={`absolute left-2 top-2.5 pointer-events-none ${error ? 'text-red-400' : 'text-gray-500'}`}>
                     <i data-lucide="chevron-down" className="w-4 h-4"></i>
@@ -686,7 +686,16 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                     </div>
                                     <div className="h-px bg-white/5 my-1"></div>
                                     <div className="flex gap-3">
-                                        <NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} />
+                                        <NexusInput 
+                                            label="مقدار (Value) *" 
+                                            value={formData.val} 
+                                            onChange={e=>handleChange('val', e.target.value)} 
+                                            placeholder="مثلا 100" 
+                                            className="flex-1" 
+                                            disabled={!serverStatus} 
+                                            dir="rtl"
+                                            error={errors.val} 
+                                        />
                                         {isVisible('units') && (
                                             <SearchableDropdown 
                                                 label={getLabel('units', 'واحد')} 
