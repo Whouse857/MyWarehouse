@@ -1085,3 +1085,257 @@ def register_routes(app, server_state):
             return jsonify({"success": True})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+        
+    # ------------------------------------------------------------------------------
+    # [بخش جدید: ماژول مدیریت پروژه‌ها و BOM]
+    # اضافه شده در نسخه 0.23 - شامل APIهای CRUD پروژه، BOM و کسر از انبار
+    # ------------------------------------------------------------------------------
+
+    # 1. دریافت لیست پروژه‌ها (با شمارش تعداد قطعات BOM)
+    @app.route('/api/projects', methods=['GET'])
+    def get_projects():
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            # تغییر کوئری برای گرفتن تعداد قطعات در هر پروژه
+            query = """
+                SELECT p.*, 
+                (SELECT COUNT(*) FROM project_bom WHERE project_id = p.id) as bom_count 
+                FROM projects p 
+                ORDER BY last_modified DESC
+            """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            for r in rows:
+                if r.get('last_modified'): r['last_modified'] = str(r['last_modified'])
+                if r.get('created_at'): r['created_at'] = str(r['created_at'])
+            return jsonify(rows)
+        finally:
+            cursor.close(); conn.close()
+
+    # 2. ذخیره پروژه (ایجاد یا ویرایش نام و توضیحات)
+    @app.route('/api/projects/save', methods=['POST'])
+    def save_project():
+        try:
+            d = request.json
+            p_id = d.get('id')
+            name = d.get('name')
+            desc = d.get('description', '')
+            
+            if not name: return jsonify({"error": "نام پروژه الزامی است"}), 400
+
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
+                if p_id:
+                    cursor.execute("UPDATE projects SET name=%s, description=%s WHERE id=%s", (name, desc, p_id))
+                    pid = p_id
+                else:
+                    cursor.execute("INSERT INTO projects (name, description) VALUES (%s, %s)", (name, desc))
+                    pid = cursor.lastrowid
+                conn.commit()
+                return jsonify({"success": True, "id": pid})
+            finally:
+                cursor.close(); conn.close()
+        except Exception as e: return jsonify({"error": str(e)}), 500
+
+    # 3. حذف پروژه (به همراه BOM و هزینه‌ها)
+    @app.route('/api/projects/delete/<int:id>', methods=['DELETE'])
+    def delete_project(id: int):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM projects WHERE id=%s", (id,))
+            conn.commit()
+            return jsonify({"success": True})
+        finally:
+            cursor.close(); conn.close()
+
+    # 4. دریافت اطلاعات کامل پروژه (BOM + Costs)
+    @app.route('/api/projects/<int:id>/details', methods=['GET'])
+    def get_project_details(id: int):
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT * FROM projects WHERE id=%s", (id,))
+            project = cursor.fetchone()
+            if not project: return jsonify({"error": "پروژه یافت نشد"}), 404
+            
+            # تبدیل تاریخ‌های پروژه به رشته
+            if project.get('last_modified'): project['last_modified'] = str(project['last_modified'])
+            if project.get('created_at'): project['created_at'] = str(project['created_at'])
+
+            # اصلاحیه در routes.py -> تابع get_project_details
+            bom_query = """
+                SELECT 
+                    pb.id as bom_id, pb.quantity as required_qty, pb.sort_order,
+                    p.id as part_id, p.val, p.part_code, p.package, p.toman_price, p.usd_rate, 
+                    p.storage_location, p.quantity as inventory_qty, p.type, p.watt, p.tolerance, p.tech
+                FROM project_bom pb
+                JOIN parts p ON pb.part_id = p.id
+                WHERE pb.project_id = %s
+                ORDER BY pb.sort_order ASC
+            """
+            cursor.execute(bom_query, (id,))
+            bom_list = cursor.fetchall()
+            
+            # تبدیل مقادیر در لیست قطعات (حتی اگر لیست خالی باشد این کد خطا نمی‌دهد)
+            for item in bom_list:
+                for key in item:
+                    if type(item[key]).__name__ == 'Decimal':
+                        item[key] = float(item[key])
+                    elif hasattr(item[key], 'isoformat'):
+                        item[key] = str(item[key])
+
+            cursor.execute("SELECT * FROM project_costs WHERE project_id=%s", (id,))
+            costs_list = cursor.fetchall()
+            
+            # اصلاحیه مهم: تبدیل مقادیر در لیست هزینه‌ها
+            for item in costs_list:
+                for key, val in item.items():
+                    if type(val).__name__ == 'Decimal': item[key] = float(val)
+
+            return jsonify({"project": project, "bom": bom_list, "costs": costs_list})
+        finally:
+            cursor.close(); conn.close()
+
+    # 5. ذخیره تغییرات BOM و هزینه‌ها (اصلاح شده برای ذخیره قیمت دلار و ضرایب)
+    @app.route('/api/projects/save_details', methods=['POST'])
+    def save_project_details():
+        try:
+            d = request.json
+            p_id = d.get('project_id')
+            bom_items = d.get('bom', [])
+            cost_items = d.get('costs', [])
+            
+            # دریافت مقادیر جدید برای آپدیت پروژه
+            conv_rate = d.get('conversion_rate', 0)
+            p_profit = d.get('part_profit', 0)
+            total_usd = d.get('total_price_usd', 0)
+            total_count = d.get('total_count', 0)
+
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
+                # بروزرسانی BOM
+                cursor.execute("DELETE FROM project_bom WHERE project_id=%s", (p_id,))
+                if bom_items:
+                    bom_values = []
+                    for idx, item in enumerate(bom_items):
+                        bom_values.append((p_id, item['part_id'], item['required_qty'], idx))
+                    cursor.executemany("INSERT INTO project_bom (project_id, part_id, quantity, sort_order) VALUES (%s, %s, %s, %s)", bom_values)
+
+                # بروزرسانی هزینه‌ها
+                cursor.execute("DELETE FROM project_costs WHERE project_id=%s", (p_id,))
+                if cost_items:
+                    cost_values = [(p_id, c['description'], float(c['cost'])) for c in cost_items if c.get('description')]
+                    if cost_values:
+                        cursor.executemany("INSERT INTO project_costs (project_id, description, cost) VALUES (%s, %s, %s)", cost_values)
+
+                # [مهم] آپدیت اطلاعات مالی پروژه در جدول اصلی
+                update_sql = """
+                    UPDATE projects 
+                    SET last_modified=NOW(), 
+                        conversion_rate=%s, 
+                        part_profit=%s, 
+                        total_price_usd=%s, 
+                        total_parts_count=%s 
+                    WHERE id=%s
+                """
+                cursor.execute(update_sql, (conv_rate, p_profit, total_usd, total_count, p_id))
+                
+                conn.commit()
+                return jsonify({"success": True})
+            finally:
+                cursor.close(); conn.close()
+        except Exception as e: return jsonify({"error": str(e)}), 500
+
+    # 6. کسر از انبار (لاجیک هوشمند کسری و برداشت اجباری)
+    @app.route('/api/projects/deduct', methods=['POST'])
+    def deduct_project_bom():
+        try:
+            d = request.json
+            p_id = d.get('project_id')
+            count = int(d.get('count', 1))
+            force = d.get('force', False)
+            user = d.get('username', 'System')
+            p_date = get_current_jalali_date()
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            try:
+                # بررسی وجود پروژه
+                cursor.execute("SELECT name FROM projects WHERE id=%s", (p_id,))
+                p_row = cursor.fetchone()
+                project_name = p_row.get('name', 'Unknown') if p_row else 'Unknown'
+
+                cursor.execute("SELECT pb.quantity as bom_qty, p.* FROM project_bom pb JOIN parts p ON pb.part_id = p.id WHERE pb.project_id=%s", (p_id,))
+                items = cursor.fetchall()
+                shortages = []
+                for it in items:
+                    req = it['bom_qty'] * count
+                    if it['quantity'] < req:
+                        shortages.append({"val": it['val'], "part_code": it['part_code'], "required": req, "in_stock": it['quantity'], "missing": req - it['quantity'], "location": it['storage_location']})
+                
+                if shortages and not force: return jsonify({"success": False, "status": "shortage", "shortages": shortages})
+                
+                for it in items:
+                    req = it['bom_qty'] * count
+                    deduct = it['quantity'] if (force and it['quantity'] < req) else req
+                    if deduct > 0:
+                        cursor.execute("UPDATE parts SET quantity = quantity - %s WHERE id = %s", (deduct, it['id']))
+                        # تبدیل قیمت به float برای ثبت در لاگ
+                        price = float(it['toman_price']) if it['toman_price'] else 0
+                        log_sql = """INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, operation_type, username, reason, timestamp) VALUES (%s, %s, %s, %s, 'EXIT (Project)', %s, %s, NOW())"""
+                        cursor.execute(log_sql, (it['id'], it['val'], -deduct, price, user, f"پروژه: {project_name}"))
+                conn.commit()
+                return jsonify({"success": True})
+            finally:
+                cursor.close(); conn.close()
+        except Exception as e: return jsonify({"error": str(e)}), 500
+
+    # --------------------------------------------------------------------------
+    # 7. کپی پروژه (Duplicate) - ایجاد نسخه جدید از پروژه به همراه BOM و هزینه‌ها
+    # --------------------------------------------------------------------------
+    @app.route('/api/projects/duplicate/<int:id>', methods=['POST'])
+    def duplicate_project(id: int):
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            # 1. دریافت اطلاعات پروژه اصلی
+            cursor.execute("SELECT * FROM projects WHERE id=%s", (id,))
+            original = cursor.fetchone()
+            if not original:
+                return jsonify({"error": "پروژه یافت نشد"}), 404
+            
+            # 2. ساخت نام جدید و ایجاد پروژه جدید (شامل کپی نرخ تسعیر و سود)
+            new_name = f"{original['name']} - Copy"
+            conv_rate = original.get('conversion_rate', 0)
+            p_profit = original.get('part_profit', 0)
+            
+            cursor.execute(
+                "INSERT INTO projects (name, description, conversion_rate, part_profit, created_at, last_modified) VALUES (%s, %s, %s, %s, NOW(), NOW())",
+                (new_name, original.get('description', ''), conv_rate, p_profit)
+            )
+            new_id = cursor.lastrowid
+            
+            # 3. کپی کردن آیتم‌های BOM
+            cursor.execute("SELECT part_id, quantity, sort_order FROM project_bom WHERE project_id=%s", (id,))
+            bom_items = cursor.fetchall()
+            if bom_items:
+                bom_values = [(new_id, item['part_id'], item['quantity'], item['sort_order']) for item in bom_items]
+                cursor.executemany("INSERT INTO project_bom (project_id, part_id, quantity, sort_order) VALUES (%s, %s, %s, %s)", bom_values)
+            
+            # 4. کپی کردن هزینه‌های جانبی
+            cursor.execute("SELECT description, cost FROM project_costs WHERE project_id=%s", (id,))
+            cost_items = cursor.fetchall()
+            if cost_items:
+                cost_values = [(new_id, item['description'], item['cost']) for item in cost_items]
+                cursor.executemany("INSERT INTO project_costs (project_id, description, cost) VALUES (%s, %s, %s)", cost_values)
+            
+            conn.commit()
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()    

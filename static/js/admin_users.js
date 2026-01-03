@@ -33,7 +33,8 @@ const UsersPage = ({ serverStatus }) => {
     
     const defaultPerms = {
         entry: false, withdraw: false, inventory: false, contacts: false,
-        log: false, users: false, management: false, backup: false, server: false     
+        log: false, users: false, management: false, backup: false, server: false,
+        projects: false // اضافه شد
     };
 
     const [newUser, setNewUser] = useState({ 
@@ -211,7 +212,7 @@ const UsersPage = ({ serverStatus }) => {
                                         <div className="space-y-5">
                                             {/* دسترسی‌های عمومی */}
                                             <div className="grid grid-cols-2 gap-2">
-                                                {[{ k: 'entry', l: 'ورود کالا' }, { k: 'withdraw', l: 'خروج کالا' }, { k: 'inventory', l: 'موجودی' }, { k: 'contacts', l: 'فروشندگان' }, { k: 'log', l: 'لاگ سیستم' }].map(p => {
+                                                {[{ k: 'entry', l: 'ورود کالا' }, { k: 'withdraw', l: 'خروج کالا' }, { k: 'inventory', l: 'موجودی' }, { k: 'contacts', l: 'فروشندگان' }, { k: 'log', l: 'لاگ سیستم' } , { k: 'projects', l: 'مدیریت پروژه‌ها (BOM)' }].map(p => {
                                                     const active = !!newUser.permissions?.[p.k];
                                                     return (
                                                         <label key={p.k} className={`cursor-pointer group flex items-center gap-3 p-3 rounded-2xl transition-all border ${active ? 'bg-nexus-primary/20 border-nexus-primary/50' : 'bg-black/20 border-white/5 hover:bg-white/5'}`}>

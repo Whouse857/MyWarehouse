@@ -368,6 +368,14 @@ const App = () => {
               {hasPerm('inventory') && <button onClick={() => setActiveTab('inventory')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'inventory' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="bar-chart-2" className="w-5 h-5"></i> <span className="font-bold">موجودی و آمار</span></button>}
               
               <div className="h-px bg-white/5 my-6 mx-4"></div>
+
+              {hasPerm('projects') && (
+                <button onClick={() => setActiveTab('projects')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'projects' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                  <i data-lucide="briefcase" className="w-5 h-5"></i> <span className="font-bold">مدیریت پروژه‌ها</span>
+                </button>
+              )}
+
+              <div className="h-px bg-white/5 my-6 mx-4"></div>
               
               <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-4 mb-4">Management</div>
               {hasPerm('users') && <button onClick={() => setActiveTab('users')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'users' ? 'bg-blue-600/40 text-white border border-blue-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><i data-lucide="users" className="w-5 h-5"></i> <span className="font-bold">کاربران</span></button>}
@@ -454,7 +462,7 @@ const App = () => {
                 {activeTab === 'users' && hasPerm('users') && <UsersPage serverStatus={serverStatus} />}
                 {activeTab === 'management' && hasPerm('management') && <ManagementPage globalConfig={globalConfig} onConfigUpdate={setGlobalConfig} />}
                 {activeTab === 'backup' && hasPerm('backup') && <BackupPage />}
-                
+                {activeTab === 'projects' && hasPerm('projects') && <ProjectsPage user={user} serverStatus={serverStatus} globalConfig={globalConfig} />}
                 {/* بخش جدید: روت صفحه تنظیمات سرور */}
                 {activeTab === 'server' && hasPerm('management') && <ServerSettingsPage serverStatus={serverStatus} />}
                 
