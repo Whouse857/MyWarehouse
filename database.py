@@ -1,5 +1,5 @@
 # ==============================================================================
-# نسخه: 0.22 (مهاجرت کامل به MySQL - اصلاح شده)
+# نسخه: 0.23 (مهاجرت کامل به MySQL - به همراه ماژول پروژه‌ها)
 # فایل: database.py
 # تهیه کننده: ------
 # توضیح توابع و ماژول های استفاده شده در برنامه:
@@ -31,47 +31,41 @@ def get_db_connection():
     if os.path.exists(SERVER_CONFIG_FILE):
         try:
             with open(SERVER_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                saved = json.load(f)
-                config_data.update(saved)
-        except: pass
+                file_config = json.load(f)
+                config_data.update(file_config)
+        except Exception as e:
+            print(f"Error reading server config: {e}")
 
-    # 3. (مهم) فقط پارامترهای استاندارد اتصال را جدا کن
-    # این دیکشنری فقط چیزهایی که MySQL لازم دارد را نگه می‌دارد
-    clean_params = {
-        'host': config_data.get('host', '127.0.0.1'),
-        'user': config_data.get('user', 'root'),
-        'password': config_data.get('password', ''),
-        'database': config_data.get('database', 'HY'),
-        'port': int(config_data.get('port', 3306))
-    }
+    # 3. حذف پارامترهایی که مربوط به اتصال نیستند (مثل مسیر فایل mysqldump)
+    # تا تابع mysql.connector.connect خطا ندهد
+    valid_keys = {'host', 'user', 'password', 'database', 'port', 'charset', 'collation'}
+    connection_params = {k: v for k, v in config_data.items() if k in valid_keys}
 
-    # 4. حالا با خیال راحت وصل شو (بدون پارامترهای اضافی مثل mysqldump_path)
-    return mysql.connector.connect(**clean_params)
+    # 4. برقراری اتصال
+    return mysql.connector.connect(**connection_params)
 
 # ------------------------------------------------------------------------------
-# [تگ: افزودن ستون به صورت ایمن]
-# بررسی می‌کند که آیا ستون مورد نظر در جدول وجود دارد یا خیر؛ 
-# در صورت عدم وجود، آن را به ساختار جدول اضافه می‌کند.
+# [تگ: مدیریت ستون‌های جدید]
+# این تابع کمکی برای جلوگیری از خطا هنگام آپدیت دیتابیس استفاده می‌شود.
+# اگر ستونی وجود نداشته باشد، آن را اضافه می‌کند.
 # ------------------------------------------------------------------------------
 def add_column_safe(conn, table_name, column_name, column_type):
-    """افزودن ستون جدید به جدول در MySQL با بررسی عدم وجود قبلی"""
-    cursor = None
+    """اضافه کردن ستون به جدول در صورت عدم وجود (Migration Helper)"""
+    cursor = conn.cursor()
     try:
-        cursor = conn.cursor()
-        cursor.execute(f"SHOW COLUMNS FROM `{table_name}` LIKE '{column_name}'")
-        if not cursor.fetchone():
-            cursor.execute(f"ALTER TABLE `{table_name}` ADD COLUMN `{column_name}` {column_type}")
-            print(f"[Migration] Added column {column_name} to {table_name}")
+        cursor.execute(f"SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'")
+        if cursor.fetchone()[0] == 0:
+            print(f"Adding missing column '{column_name}' to table '{table_name}'...")
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+            conn.commit()
     except Exception as e:
-        print(f"[Migration Error] {e}")
+        print(f"Migration Warning ({table_name}.{column_name}): {e}")
     finally:
-        if cursor:
-            cursor.close()
+        cursor.close()
 
 # ------------------------------------------------------------------------------
-# [تگ: مقداردهی اولیه پایگاه داده]
-# این تابع وظیفه ساخت جداول اصلی، ایندکس‌ها، ستون‌های داینامیک و
-# ایجاد کاربر مدیر (admin) و تنظیمات پیش‌فرض را بر عهده دارد.
+# [تگ: مقداردهی اولیه دیتابیس]
+# تابع اصلی که هنگام اجرای برنامه فراخوانی می‌شود تا از وجود جداول اطمینان حاصل کند.
 # ------------------------------------------------------------------------------
 def init_db():
     """مقداردهی اولیه، ایجاد جداول و مدیریت مهاجرت داده‌ها"""
@@ -111,7 +105,7 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, operation_type TEXT,
             username TEXT, watt TEXT, tolerance TEXT, package TEXT, type TEXT,
             storage_location TEXT, tech TEXT, usd_rate DOUBLE,
-            invoice_number TEXT, part_code VARCHAR(100),
+            invoice_number TEXT, part_code VARCHAR(100), edit_reason TEXT,
             list5 TEXT, list6 TEXT, list7 TEXT, list8 TEXT, list9 TEXT, list10 TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
@@ -135,17 +129,67 @@ def init_db():
             version VARCHAR(100) UNIQUE,
             applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
+
+        # ----------------------------------------------------------------------
+        # [تگ: جداول ماژول مدیریت پروژه‌ها و BOM]
+        # این بخش اضافه شده تا قابلیت‌های تعریف پروژه و لیست قطعات فعال شود.
+        # از IF NOT EXISTS استفاده شده تا در اجراهای بعدی خطایی رخ ندهد.
+        # ----------------------------------------------------------------------
         
+        # ۷. ایجاد جدول اصلی پروژه‌ها
+        cursor.execute('''CREATE TABLE IF NOT EXISTS projects (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_modified DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            conversion_rate DOUBLE DEFAULT 0,
+            part_profit DOUBLE DEFAULT 0,
+            total_price_usd DOUBLE DEFAULT 0,
+            total_parts_count INT DEFAULT 0
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
+
+        # ۸. ایجاد جدول لیست قطعات پروژه (BOM)
+        # کلید خارجی دارد تا با حذف پروژه، لیست قطعات آن نیز حذف شود (CASCADE)
+        cursor.execute('''CREATE TABLE IF NOT EXISTS project_bom (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            project_id INT,
+            part_id INT,
+            quantity INT DEFAULT 1,
+            sort_order INT DEFAULT 0,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (part_id) REFERENCES parts(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
+
+        # ۹. ایجاد جدول هزینه‌های جانبی پروژه
+        cursor.execute('''CREATE TABLE IF NOT EXISTS project_costs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            project_id INT,
+            description VARCHAR(255),
+            cost DOUBLE DEFAULT 0,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
+        
+        # ----------------------------------------------------------------------
+
         # --- بخش مهاجرت داده‌ها (مدیریت تغییرات در نسخه‌های جدید) ---
         extra_fields = ['list5', 'list6', 'list7', 'list8', 'list9', 'list10']
         for field in extra_fields:
             add_column_safe(conn, "parts", field, "TEXT")
             add_column_safe(conn, "purchase_log", field, "TEXT")
         
+        # اضافه کردن ستون edit_reason به لاگ اگر وجود ندارد
+        add_column_safe(conn, "purchase_log", "edit_reason", "TEXT")
+
         # بررسی و ایجاد کاربر ادمین پیش‌فرض (در صورت عدم وجود)
         cursor.execute("SELECT * FROM users WHERE username = 'admin'")
         if not cursor.fetchone():
-            admin_perms = json.dumps({"entry": True, "withdraw": True, "inventory": True, "users": True, "management": True, "backup": True, "contacts": True, "log": True})
+            # دسترسی‌های کامل برای ادمین (پروژه‌ها نیز اضافه شد)
+            admin_perms = json.dumps({
+                "entry": True, "withdraw": True, "inventory": True, "users": True, 
+                "management": True, "backup": True, "contacts": True, "log": True, 
+                "projects": True
+            })
             cursor.execute(
                 "INSERT INTO users (username, password, role, full_name, permissions) VALUES (%s, %s, %s, %s, %s)", 
                 ('admin', hash_password('admin'), 'admin', 'مدیر سیستم', admin_perms)
@@ -167,6 +211,7 @@ def init_db():
 
         conn.commit()
         cursor.close()
+        print("Database initialized successfully.")
     except Exception as e:
         print(f"[INIT DB ERROR] {e}")
     finally:
