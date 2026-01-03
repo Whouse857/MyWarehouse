@@ -1,33 +1,17 @@
-// ====================================================================================================
-// نسخه: 0.20
-// فایل: Entry Page.js
-// تهیه کننده: ------
-//
-// توضیحات کلی ماژول:
-// این فایل یکی از مهم‌ترین صفحات برنامه است که وظیفه "ثبت ورود کالا" و "مدیریت موجودی" را بر عهده دارد.
-// 
-// قابلیت‌های اصلی:
-// ۱. فرم ثبت قطعه جدید با فیلدهای داینامیک (بر اساس تنظیمات ادمین).
-// ۲. لیست قطعات موجود با قابلیت جستجو و فیلتر پیشرفته.
-// ۳. شناسایی هوشمند قطعات تکراری برای جلوگیری از ثبت مجدد.
-// ۴. ویرایش و حذف قطعات موجود.
-// ۵. تولید کد اختصاصی ۱۲ رقمی برای هر قطعه.
-// ۶. محاسبه قیمت‌ها (ریالی و دلاری) و مدیریت لینک‌های خرید.
-// ====================================================================================================
+// [TAG: PAGE_ENTRY]
+// صفحه ورود قطعه (ثبت اطلاعات)
+// نسخه اصلاح شده: نمایش کد اختصاصی 12 کاراکتری در لیست و پیش‌نمایش
 
-// ----------------------------------------------------------------------------------------------------
-// [تگ: نگاشت فیلدهای پویا]
-// این آرایه ثابت، ارتباط بین تنظیمات ذخیره شده در دیتابیس (تنظیمات ادمین)
-// و نام متغیرها در فرم ورود اطلاعات (formData) را برقرار می‌کند.
-// اگر در آینده فیلدی اضافه شود، باید اینجا تعریف گردد.
-// ----------------------------------------------------------------------------------------------------
+// نگاشت تنظیمات ادمین به متغیرهای فرم
+// key: نام لیست در admin_management (تنظیمات)
+// stateKey: نام متغیر در formData (دیتابیس)
 const DYNAMIC_FIELDS_MAP = [
     { key: 'units', stateKey: 'unit', label: 'واحد' },
     { key: 'tolerances', stateKey: 'tol', label: 'تولرانس' },
-    { key: 'paramOptions', stateKey: 'watt', label: 'پارامتر فنی' }, // مثلا وات برای مقاومت
+    { key: 'paramOptions', stateKey: 'watt', label: 'پارامتر فنی' }, // مثلا وات
     { key: 'packages', stateKey: 'pkg', label: 'پکیج' },
     { key: 'techs', stateKey: 'tech', label: 'تکنولوژی' },
-    // فیلدهای توسعه یافته (رزرو شده برای آینده)
+    // فیلدهای جدید
     { key: 'list5', stateKey: 'list5', label: 'فیلد ۵' },
     { key: 'list6', stateKey: 'list6', label: 'فیلد ۶' },
     { key: 'list7', stateKey: 'list7', label: 'فیلد ۷' },
@@ -37,29 +21,20 @@ const DYNAMIC_FIELDS_MAP = [
 ];
 
 
-// ----------------------------------------------------------------------------------------------------
-// [تگ: تولید کد قطعه]
-// این تابع یک کد یکتا (UID) برای قطعه تولید می‌کند.
-// ساختار کد: [پیشوند ۳ حرفی][شناسه ۹ رقمی] (مثال: RES000000123)
-// ----------------------------------------------------------------------------------------------------
+// تابع کمکی برای تولید کد 12 رقمی بر اساس ID و تنظیمات
 const getPartCode = (p, globalConfig) => {
     // اگر کد از قبل در دیتابیس ذخیره شده، همان را نشان بده
     if (p && p.part_code) return p.part_code; 
     
-    // اگر قطعه جدید است و هنوز ID ندارد (هنوز در دیتابیس ثبت نشده)
+    // اگر قطعه جدید است و هنوز ID ندارد
     if (!p || !p.id) return "---";
     
-    // دریافت پیشوند از تنظیمات (مثلاً RES برای مقاومت) یا استفاده از پیش‌فرض PRT
+    // حالت رزرو برای قطعات قدیمی
     const prefix = (globalConfig && globalConfig[p.type]?.prefix) || "PRT";
-    // تبدیل ID به رشته ۹ رقمی با صفرهای ابتدایی
     const numeric = String(p.id).padStart(9, '0');
     return `${prefix}${numeric}`;
 };
 
-// ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت مودال خلاصه وضعیت]
-// پنجره‌ای که قبل از ثبت نهایی نمایش داده می‌شود تا کاربر اطلاعات را بازبینی کند.
-// ----------------------------------------------------------------------------------------------------
 const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     if (!isOpen) return null;
     const fullCode = getPartCode(data, globalConfig);
@@ -73,7 +48,6 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
                         <span className="text-blue-300 font-bold">کد ۱۲ کاراکتری:</span> 
                         <span className="text-white font-black font-mono tracking-widest">{fullCode}</span>
                     </div>
-                    {/* نمایش جزئیات ثبت شده */}
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>نوع:</span> <span className="text-white font-bold">{data.type}</span></div>
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>مقدار:</span> <span className="text-white font-bold ltr font-mono">{data.val} {data.unit}</span></div>
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>پکیج:</span> <span className="text-white font-bold">{data.pkg}</span></div>
@@ -91,103 +65,7 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     );
 };
 
-
-// ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت دراپ‌داون قابل جستجو]
-// جایگزین Select معمولی برای مدیریت لیست‌های طولانی با قابلیت جستجو و اعتبارسنجی سخت‌گیرانه
-// ----------------------------------------------------------------------------------------------------
-// ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت دراپ‌داون قابل جستجو]
-// اصلاح شده: اضافه شدن دریافت prop خطا (error) برای قرمز کردن کادر
-// ----------------------------------------------------------------------------------------------------
-const SearchableDropdown = ({ label, value, options, onChange, disabled, placeholder, error }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
-    const wrapperRef = useRef(null);
-    const notify = useNotify();
-
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setIsOpen(false);
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    useEffect(() => { setSearchTerm(value || ""); }, [value]);
-
-    const filteredOptions = (options || []).filter(item => 
-        String(item).toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    const handleBlur = () => {
-        setTimeout(() => {
-            const exactMatch = (options || []).find(opt => String(opt) === searchTerm);
-            if (searchTerm && !exactMatch) {
-                notify.show('خطای انتخاب', `مقدار "${searchTerm}" در لیست مجاز نیست.`, 'error');
-                onChange("");
-                setSearchTerm("");
-            }
-            setIsOpen(false);
-        }, 200);
-    };
-
-    return (
-        <div className="relative flex-1" ref={wrapperRef}>
-            <label className={`block text-[10px] font-bold mb-1 pr-1 ${error ? 'text-red-400' : 'text-gray-500'}`}>{label}</label>
-            <div className="relative">
-                <input
-                    type="text"
-                    className={`nexus-input w-full px-3 py-2 text-sm transition-all ${error ? '!border-red-500 focus:!border-red-500 bg-red-500/10 placeholder-red-300/50' : 'bg-black/20 border-white/10 focus:border-nexus-primary'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    value={searchTerm}
-                    onChange={(e) => { setSearchTerm(e.target.value); setIsOpen(true); }}
-                    onFocus={() => setIsOpen(true)}
-                    onBlur={handleBlur}
-                    placeholder={placeholder || "انتخاب..."}
-                    disabled={disabled}
-                    dir="rtl"
-                />
-                <div className={`absolute left-2 top-2.5 pointer-events-none ${error ? 'text-red-400' : 'text-gray-500'}`}>
-                    <i data-lucide="chevron-down" className="w-4 h-4"></i>
-                </div>
-            </div>
-
-            {isOpen && !disabled && (
-                <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto custom-scroll bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                    {filteredOptions.length > 0 ? (
-                        filteredOptions.map((item, idx) => (
-                            <div 
-                                key={idx}
-                                onClick={() => { onChange(item); setSearchTerm(item); setIsOpen(false); }}
-                                className="px-3 py-2 text-sm text-gray-300 hover:bg-nexus-primary/20 hover:text-white cursor-pointer transition-colors border-b border-white/5 last:border-0 font-mono"
-                            >
-                                {item}
-                            </div>
-                        ))
-                    ) : (
-                        <div className="px-3 py-3 text-xs text-red-400 text-center bg-red-500/5">یافت نشد</div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-};
-
-
-// ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت اصلی صفحه ورود]
-// ----------------------------------------------------------------------------------------------------
 const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: وضعیت‌های فرم و داده‌ها]
-    // formData: نگهداری مقادیر تمام فیلدهای ورودی.
-    // partsList: لیست کل قطعات موجود در انبار (دریافتی از سرور).
-    // contacts: لیست مخاطبین/فروشندگان برای پیشنهاد در فیلد فروشنده.
-    // filters: مقادیر فیلترهای جستجو در لیست سمت چپ.
-    // errors: آبجکت نگهداری خطاهای اعتبارسنجی (Validation).
-    // showSummary: کنترل نمایش مودال پیش‌نمایش.
-    // linkInput: متغیر موقت برای اینپوت افزودن لینک خرید.
-    // ------------------------------------------------------------------------------------------------
     const [formData, setFormData] = useState({ 
     id: null, val: "", unit: "", watt: "", tol: "", pkg: "", type: "Resistor", 
     date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", 
@@ -203,14 +81,9 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     const [showSummary, setShowSummary] = useState(false);
     const [linkInput, setLinkInput] = useState(""); 
     
-    // هوک‌های اعلان و دیالوگ
     const notify = useNotify();
     const dialog = useDialog();
     
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: بارگذاری اطلاعات]
-    // دریافت لیست قطعات و لیست مخاطبین از API هنگام لود صفحه.
-    // ------------------------------------------------------------------------------------------------
     const loadData = useCallback(async () => { 
         try { 
             const [partsRes, contactsRes] = await Promise.all([fetchAPI('/parts'), fetchAPI('/contacts')]);
@@ -221,11 +94,6 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
     
     useEffect(() => { loadData(); }, [loadData]);
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: تشخیص تکراری]
-    // این هوک بررسی می‌کند آیا قطعه‌ای با مشخصات وارد شده (نوع، مقدار، پکیج) قبلاً ثبت شده است یا خیر.
-    // اگر موردی پیدا شود، در لیست هشدارهای زرد رنگ نمایش داده می‌شود.
-    // ------------------------------------------------------------------------------------------------
     const duplicates = useMemo(() => {
         if (!formData.val || !formData.type) {
             return [];
@@ -234,7 +102,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         const formFullVal = clean(formData.val + (formData.unit && formData.unit !== '-' ? formData.unit : ''));
         
         return partsList.filter(p => {
-            if (formData.id && p.id === formData.id) return false; // خود قطعه در حال ویرایش را نادیده بگیر
+            if (formData.id && p.id === formData.id) return false; 
             const pType = clean(p.type);
             const pVal = clean(p.val);
             const matchType = pType === clean(formData.type);
@@ -247,10 +115,6 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         });
     }, [formData.val, formData.unit, formData.pkg, formData.type, partsList, formData.id]);
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: فیلتر کردن لیست]
-    // اعمال فیلترهای جستجو (نوع، مقدار، پکیج، آدرس، کد) روی لیست قطعات سمت چپ.
-    // ------------------------------------------------------------------------------------------------
     const filteredParts = useMemo(() => {
         const normalize = (s) => s ? String(s).toLowerCase().replace(/,/g, '').trim() : '';
         const activeCategory = normalize(formData.type);
@@ -260,7 +124,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         const filterType = normalize(filters.type);
         const filterCode = normalize(filters.code);
 
-        if (!Array.isArray(partsList)) return [];
+    if (!Array.isArray(partsList)) return [];
 
         return partsList.filter(p => {
             if (!p) return false;
@@ -270,10 +134,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
             const pType = normalize(p.type);
             const pCode = normalize(getPartCode(p, globalConfig));
             
-            // فیلتر اصلی: فقط قطعات هم‌نوع با دسته‌بندی انتخاب شده در فرم نمایش داده شوند
             if (activeCategory && pType !== activeCategory) return false;
-            
-            // اعمال فیلترهای کاربر
             if (filterVal && !pVal.includes(filterVal)) return false;
             if (filterPkg && !pPkg.includes(filterPkg)) return false;
             if (filterLoc && !pLoc.includes(filterLoc)) return false;
@@ -283,48 +144,33 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         });
     }, [partsList, filters, formData.type, globalConfig]);
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: گزینه‌های داینامیک]
-    // ساخت لیست پیشنهادی برای فیلد فروشنده و آدرس انبار.
-    // ------------------------------------------------------------------------------------------------
     const vendorOptions = useMemo(() => {
         const names = contacts.map(c => c.name);
-        // اگر نام وارد شده در لیست نیست، موقتاً به گزینه‌ها اضافه شود
         if (formData.vendor_name && !names.includes(formData.vendor_name)) names.push(formData.vendor_name);
         return names;
     }, [contacts, formData.vendor_name]);
 
-    const locationOptions = useMemo(() => {
-        const generalConfig = globalConfig?.["General"];
-        const rawLocs = generalConfig?.locations;
-        const sharedLocs = Array.isArray(rawLocs) ? [...rawLocs] : [];
-        if (formData.location && !sharedLocs.includes(formData.location)) sharedLocs.push(formData.location);
-        return sharedLocs;
-    }, [globalConfig, formData.location]);
+  const locationOptions = useMemo(() => {
+    const generalConfig = globalConfig?.["General"];
+    const rawLocs = generalConfig?.locations;
+    const sharedLocs = Array.isArray(rawLocs) ? [...rawLocs] : [];
+    if (formData.location && !sharedLocs.includes(formData.location)) sharedLocs.push(formData.location);
+    return sharedLocs;
+  }, [globalConfig, formData.location]);
 
-    // بروزرسانی آیکون‌ها
     useLucide([filteredParts.length, formData.type, duplicates.length, formData.purchase_links.length]); 
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: مدیریت تغییرات فرم]
-    // تابع اصلی برای آپدیت استیت formData هنگام تایپ کاربر.
-    // شامل منطق فرمت‌بندی اعداد (حذف کاما و محدودیت کاراکتر غیر عددی).
-    // ------------------------------------------------------------------------------------------------
     const handleChange = useCallback((key, val) => {
         let v = val;
         // تغییر جدید: جلوگیری از ورود کاراکترهای غیر عددی برای تعداد
         if (key === 'qty' || key === 'min_qty') {
             v = val.replace(/[^0-9]/g, '');
         }
-        // فرمت‌بندی ۳ رقم ۳ رقم برای قیمت‌ها
         else if (key === 'price_toman' || key === 'usd_rate') {
             v = formatNumberWithCommas(val.replace(/,/g, ''));
         }
         
-        // پاک کردن خطا برای فیلد تغییر یافته
         setErrors(prev => ({...prev, [key]: false}));
-        
-        // اگر نوع قطعه تغییر کرد، واحد و مقادیر وابسته ریست شوند
         if (key === 'type') {
             const newConfig = globalConfig?.[val] ? globalConfig[val] : (globalConfig?.["Resistor"] || {});
             const defaultUnit = (newConfig.units && newConfig.units.length > 0) ? newConfig.units[0] : "";
@@ -334,15 +180,10 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         }
     }, [globalConfig]);
     
-    // تابع کمکی برای جلوگیری از تایپ حروف در فیلدهای عددی
     const preventNonNumeric = (e) => {
         if (!/[0-9]/.test(e.key) && e.key !== "Backspace" && e.key !== "Delete" && e.key !== "ArrowLeft" && e.key !== "ArrowRight") { e.preventDefault(); }
     };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: مدیریت لینک‌ها]
-    // افزودن و حذف لینک‌های خرید (حداکثر ۵ لینک).
-    // ------------------------------------------------------------------------------------------------
     const handleAddLink = () => {
         if (!linkInput.trim()) return;
         if (formData.purchase_links.length >= 5) {
@@ -356,50 +197,27 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         setLinkInput("");
     };
 
-    const handleRemoveLink = (index) => {
-        setFormData(prev => ({
-            ...prev,
-            purchase_links: prev.purchase_links.filter((_, i) => i !== index)
-        }));
-    };
+  const handleRemoveLink = (index) => {
+    setFormData(prev => ({ ...prev, purchase_links: prev.purchase_links.filter((_, i) => i !== index) }));
+  };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: اعتبارسنجی فرم]
-    // بررسی صحت اطلاعات قبل از ارسال به سرور.
-    // این بخش هم فیلدهای ثابت (مثل قیمت) و هم فیلدهای داینامیک (بر اساس تنظیمات ادمین) را چک می‌کند.
-    // ------------------------------------------------------------------------------------------------
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: اعتبارسنجی فرم]
-    // اصلاح شده: افزودن بررسی الزامی بودن حداقل موجودی و قیمت دلار
-    // ------------------------------------------------------------------------------------------------
     const handleSubmit = () => {
         const newErrors = {};
         const typeConfig = globalConfig?.[formData.type] || {}; 
 
         // 1. بررسی فیلدهای ثابت همیشگی
         if(!formData.val) newErrors.val = true;
-        
-        // بررسی تعداد (qty)
-        if(formData.qty === "" || Number(formData.qty) < 0) newErrors.qty = true;
-        
-        // --- تغییرات جدید: بررسی حداقل و قیمت دلار ---
-        // بررسی حداقل موجودی (min_qty)
-        if(formData.min_qty === "" || Number(formData.min_qty) < 0) newErrors.min_qty = true;
-
-        // بررسی قیمت دلار (usd_rate)
-        if(!formData.usd_rate) newErrors.usd_rate = true;
-        // ---------------------------------------------
-
+        // اجازه ثبت با تعداد صفر داده می‌شود، اما فیلد نباید خالی یا منفی باشد
+if(formData.qty === "" || Number(formData.qty) < 0) newErrors.qty = true;
         // بررسی الزامی بودن آدرس از تنظیمات General
         const locSetting = globalConfig?.["General"]?.fields?.['locations'];
         const isLocRequired = locSetting ? locSetting.required : true; // اگر تنظیم نشده بود، پیش‌فرض الزامی است
         if(isLocRequired && !formData.location) newErrors.location = true;
-        
         if(!formData.price_toman) newErrors.price_toman = true;
         // اگر وندور الزامی است:
         if(!formData.vendor_name) newErrors.vendor_name = true;
 
-        // 2. بررسی هوشمند فیلدهای داینامیک با توجه به تنظیمات ادمین
+        // 2. بررسی هوشمند فیلدهای داینامیک
         DYNAMIC_FIELDS_MAP.forEach(field => {
             const fieldConfig = typeConfig.fields?.[field.key];
             
@@ -408,7 +226,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
             const isVisible = fieldConfig ? fieldConfig.visible : isDefaultVisible;
             
             // منطق الزامی بودن
-            const isDefaultRequired = ['units','packages'].includes(field.key);
+            const isDefaultRequired = ['units','packages'].includes(field.key); // مثلا یونیت و پکیج ذاتا مهم‌اند
             const isRequired = fieldConfig ? fieldConfig.required : isDefaultRequired;
 
             if (isVisible && isRequired) {
@@ -416,23 +234,18 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
             }
         });
 
-        if (Object.keys(newErrors).length > 0) {
-            setErrors(newErrors);
-            notify.show('خطای اعتبارسنجی', 'لطفاً فیلدهای ستاره‌دار (الزامی) را پر کنید.', 'error');
-            return;
-        }
-        setShowSummary(true);
-    };
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      notify.show('خطای اعتبارسنجی', 'لطفاً فیلدهای الزامی (ستاره‌دار) را تکمیل کنید.', 'error');
+      return;
+    }
+    setShowSummary(true);
+  };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: ثبت نهایی]
-    // ارسال داده‌ها به سرور پس از تایید در مودال خلاصه وضعیت.
-    // ------------------------------------------------------------------------------------------------
     const handleFinalSubmit = async () => {
         let fullVal = formData.val;
         if(formData.unit && formData.unit !== "-") fullVal += formData.unit;
 
-        // آماده‌سازی پیلود برای ارسال (حذف کاما از قیمت‌ها و ...)
         const payload = { ...formData, val: fullVal, qty: Number(formData.qty) || 0, min_qty: Number(formData.min_qty) || 1, price: String(formData.price_toman).replace(/,/g, ''), usd_rate: String(formData.usd_rate).replace(/,/g, ''), username: user.username , invoice_number: formData.invoice_number};
         try { 
             const { ok, data } = await fetchAPI('/save', { method: 'POST', body: payload });
@@ -440,13 +253,12 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                 loadData(); 
                 const typeConfig = globalConfig?.[formData.type] || globalConfig?.["Resistor"] || {};
                 const defUnit = (typeConfig.units && typeConfig.units[0]) || "";
-                
-                // ریست کردن فرم پس از ثبت موفق
+                // در داخل بلوک if (ok) ...
                 setFormData({ 
                     id: null, val: "", unit: defUnit, watt: "", tol: "", pkg: "", type: formData.type, 
                     date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", 
                     min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [],
-                    list5: "", list6: "", list7: "", list8: "", list9: "", list10: "" 
+                    list5: "", list6: "", list7: "", list8: "", list9: "", list10: "" // <--- این‌ها را اضافه کنید
                 });
                 notify.show('موفقیت', 'قطعه با موفقیت در انبار ذخیره شد.', 'success');
                 setShowSummary(false);
@@ -456,22 +268,14 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         } catch(e) { notify.show('خطای سرور', 'خطا در برقراری ارتباط با سرور.', 'error'); }
     };
     
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: ویرایش قطعه]
-    // پر کردن فرم با اطلاعات یک قطعه انتخاب شده از لیست جهت ویرایش.
-    // شامل منطق تفکیک مقدار از واحد (مثلا 100uF -> val: 100, unit: uF).
-    // ------------------------------------------------------------------------------------------------
     const handleEdit = (p) => {
         let category = p.type || "Resistor"; 
-        // منطق تشخیص دسته در صورت عدم وجود (مربوط به دیتای قدیمی)
         if (!globalConfig?.[category]) {
             if (p.val.includes("F")) category = "Capacitor";
             else if (p.val.includes("H")) category = "Inductor";
             else category = "Resistor";
         }
         const config = globalConfig?.[category] ? globalConfig[category] : (globalConfig?.["Resistor"] || {});
-        
-        // تفکیک هوشمند واحد از مقدار
         let u = (config.units && config.units.length > 0) ? config.units[0] : "";
         let v = p.val || "";
         if (config.units) {
@@ -506,85 +310,49 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
         purchase_links: links, 
         invoice_number: p.invoice_number, 
         part_code: p.part_code,
-        // بازگردانی مقادیر فیلدهای اضافی
+        // --- این بخش زیر را حتماً اضافه کن ---
         list5: p.list5 || "", list6: p.list6 || "", list7: p.list7 || "", 
         list8: p.list8 || "", list9: p.list9 || "", list10: p.list10 || ""
         });
         setErrors({});
     };
     
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: حذف قطعه - اصلاح شده]
-    // حذف قطعه با ارسال نام کاربر جهت ثبت در لاگ تاریخچه
-    // ------------------------------------------------------------------------------------------------
     const handleDelete = async (id) => { 
         const confirmed = await dialog.ask("حذف قطعه", "آیا از حذف این قطعه از انبار اطمینان دارید؟", "danger");
-        if(confirmed) { 
-            try { 
-                // اصلاح: ارسال username در کوئری استرینگ
-                await fetchAPI(`/delete/${id}?username=${user.username}`, { method: 'DELETE' }); 
-                loadData(); 
-                notify.show('حذف شد', 'قطعه با موفقیت حذف شد و در تاریخچه ثبت گردید.', 'success'); 
-            } catch(e) {
-                notify.show('خطا', 'مشکل در حذف قطعه', 'error');
-            } 
-        } 
+        if(confirmed) { try { await fetchAPI(`/delete/${id}`, { method: 'DELETE' }); loadData(); notify.show('حذف شد', 'قطعه با موفقیت حذف شد.', 'success'); } catch(e) {} } 
     };
 
-    // تنظیمات دسته جاری (انتخاب شده در دراپ‌داون)
     const currentConfig = (globalConfig?.[formData.type]) ? globalConfig[formData.type] : (globalConfig?.["Resistor"]) || { units: [], paramOptions: [], packages: [], techs: [], icon: 'circle', label: 'Unknown', prefix: 'PRT' };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: توابع کمکی رندر]
-    // getLabel: دریافت نام نمایشی فیلد از تنظیمات ادمین (و افزودن ستاره اگر الزامی باشد).
-    // isVisible: بررسی اینکه آیا فیلد باید طبق تنظیمات نمایش داده شود یا خیر.
-    // ------------------------------------------------------------------------------------------------
+    // --- تابع برای خواندن نام فیلدها از تنظیمات ادمین ---
     const getLabel = (key, defaultLabel) => {
     const isLoc = key === 'location';
     const targetConfig = isLoc ? globalConfig?.["General"] : currentConfig;
     const configKey = isLoc ? 'locations' : key;
-
     const fConfig = targetConfig?.fields?.[configKey];
     const label = fConfig?.label || defaultLabel;
-    
-    // چک کردن الزامی بودن: یا از تنظیمات ادمین یا موارد پیش‌فرض سیستم
     const isRequired = fConfig ? fConfig.required : ['units', 'packages', 'location'].includes(key);
     return label + (isRequired ? " *" : "");
-    };
+  }, [currentConfig, globalConfig]);
 
+    // --- تابع برای چک کردن اینکه فیلد باید نمایش داده شود یا نه ---
     const isVisible = (key) => {
         const fConfig = currentConfig.fields?.[key];
         const isBase = ['units', 'paramOptions', 'packages', 'techs'].includes(key);
         return fConfig ? fConfig.visible : isBase;
     };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: رندر رابط کاربری (JSX)]
-    // ساختار اصلی صفحه شامل:
-    // ۱. هدر (نمایش تعداد کل قطعات).
-    // ۲. ستون سمت چپ: لیست قطعات با فیلترها.
-    // ۳. ستون سمت راست: فرم ورود اطلاعات.
-    // ------------------------------------------------------------------------------------------------
     return (
         <ErrorBoundary>
             <div className="flex-1 flex flex-col min-w-0 h-full relative">
-                {/* مودال پیش‌نمایش */}
                 <SummaryModal isOpen={showSummary} onClose={() => setShowSummary(false)} onConfirm={handleFinalSubmit} data={formData} globalConfig={globalConfig} />
-                
-                {/* هدر صفحه */}
                 <header className="h-16 border-b border-white/5 flex items-center justify-end px-6 bg-black/20 backdrop-blur-md sticky top-0 z-10">
                     <div className="flex items-center gap-3"><span className="text-xs text-nexus-accent font-bold">تعداد قطعات موجود: {partsList.length}</span><div className="w-2 h-2 rounded-full bg-nexus-primary animate-pulse"></div></div>
                 </header>
-                
                 <div className="flex-1 p-6">
                     <div className="grid grid-cols-12 gap-6">
-                        
-                        {/* ---------------------------------------------------------------------- */}
-                        {/* ستون لیست قطعات (سمت چپ در دسکتاپ، پایین در موبایل)                     */}
-                        {/* ---------------------------------------------------------------------- */}
                         <div className="col-span-12 lg:col-span-8 flex flex-col order-2 lg:order-1">
                             <div className="glass-panel rounded-2xl flex flex-col">
-                                {/* نوار جستجو و فیلترها */}
                                 <div className="p-3 border-b border-white/5 grid grid-cols-5 gap-3 bg-white/5">
                                     <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="کد 12 رقمی..." value={filters.code} onChange={e => setFilters({...filters, code: e.target.value})} />
                                     <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="فیلتر مقدار..." value={filters.val} onChange={e => setFilters({...filters, val: e.target.value})} />
@@ -592,11 +360,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                     <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="فیلتر آدرس..." value={filters.loc} onChange={e => setFilters({...filters, loc: e.target.value})} />
                                     <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="فیلتر نوع..." value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})} />
                                 </div>
-                                
-                                {/* هدر لیست */}
                                 <div className="grid grid-cols-12 gap-2 bg-black/30 p-3 border-b border-white/5 text-[11px] text-gray-400 font-bold text-center"><div className="col-span-2 text-right pr-2">کد اختصاصی</div><div className="col-span-5 text-right">مشخصات فنی</div><div className="col-span-1">تعداد</div><div className="col-span-2">قیمت</div><div className="col-span-2">عملیات</div></div>
-                                
-                                {/* بدنه لیست قطعات */}
                                 <div className="p-2 space-y-2">
                                     {filteredParts.map(p => {
                                         const pCode = getPartCode(p, globalConfig);
@@ -628,16 +392,10 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                 </div>
                             </div>
                         </div>
-
-                        {/* ---------------------------------------------------------------------- */}
-                        {/* ستون فرم ورود اطلاعات (سمت راست در دسکتاپ، بالا در موبایل)               */}
-                        {/* ---------------------------------------------------------------------- */}
                         <div className="col-span-12 lg:col-span-4 h-full order-1 lg:order-2">
                             <div className="glass-panel border-white/10 rounded-2xl p-5 h-full flex flex-col shadow-2xl relative">
                                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-nexus-primary to-purple-600"></div>
                                 <h2 className="text-lg font-bold text-white mb-6 flex items-center justify-between"><span>{formData.id ? 'ویرایش قطعه' : 'ثبت قطعه جدید'}</span>{formData.id && <button onClick={() => setFormData({id: null, val: "", unit: (currentConfig.units && currentConfig.units[0]) || "", watt: "", tol: "", pkg: "", type: "Resistor", date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: "", vendor_name: "", location: "", tech: "", purchase_links: []})} className="text-xs text-gray-400 hover:text-white bg-white/5 px-2 py-1 rounded transition">انصراف</button>}</h2>
-                                
-                                {/* بخش نمایش هشدارهای تکراری */}
                                 {duplicates.length > 0 && !formData.id && (
                                     <div className="mb-6 bg-yellow-500/5 border border-yellow-500/20 rounded-2xl p-4 animate-in slide-in-from-top-2">
                                         <div className="flex items-center gap-2 mb-3 text-yellow-400 font-bold text-sm border-b border-yellow-500/10 pb-2">
@@ -671,8 +429,6 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                         </div>
                                     </div>
                                 )}
-                                
-                                {/* فیلدهای ورودی فرم */}
                                 <div className="space-y-4 pl-1 pr-1">
                                     <div className="flex flex-col"><label className="text-nexus-accent text-xs mb-1 block font-bold">دسته‌بندی قطعه (Component Type)</label>
                                         <div className="relative">
@@ -685,78 +441,21 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                         </div>
                                     </div>
                                     <div className="h-px bg-white/5 my-1"></div>
-                                    <div className="flex gap-3">
-                                        <NexusInput 
-                                            label="مقدار (Value) *" 
-                                            value={formData.val} 
-                                            onChange={e=>handleChange('val', e.target.value)} 
-                                            placeholder="مثلا 100" 
-                                            className="flex-1" 
-                                            disabled={!serverStatus} 
-                                            dir="rtl"
-                                            error={errors.val} 
-                                        />
-                                        {isVisible('units') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('units', 'واحد')} 
-                                                options={currentConfig.units} 
-                                                value={formData.unit} 
-                                                onChange={(val)=>handleChange('unit', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.unit} 
-                                            />
-                                        )}
-                                    </div>
-                                    <div className="flex gap-3">
-                                        {isVisible('paramOptions') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('paramOptions', currentConfig.paramLabel)} 
-                                                options={currentConfig.paramOptions} 
-                                                value={formData.watt} 
-                                                onChange={(val)=>handleChange('watt', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.watt} 
-                                            />
-                                        )}
-                                        <SearchableDropdown 
-                                            label={getLabel('tolerances', 'تولرانس')} 
-                                            options={currentConfig.tolerances || []} 
-                                            value={formData.tol} 
-                                            onChange={(val) => handleChange('tol', val)} 
-                                            disabled={!serverStatus}
-                                            error={errors.tol} 
-                                        />
-                                    </div>
-                                    <div className="flex gap-3">
-                                        {isVisible('packages') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('packages', 'پکیج (Package)')} 
-                                                options={currentConfig.packages} 
-                                                value={formData.pkg} 
-                                                onChange={(val)=>handleChange('pkg', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.pkg} 
-                                            />
-                                        )}
-                                        {isVisible('techs') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('techs', 'تکنولوژی/نوع دقیق')} 
-                                                options={currentConfig.techs} 
-                                                value={formData.tech} 
-                                                onChange={(val)=>handleChange('tech', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.tech} 
-                                            />
-                                        )}
-                                    </div>
-                                    
-                                    {/* رندر داینامیک فیلدهای اضافه (list5 تا list10) */}
+                                    <div className="flex gap-3"><NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} error={errors.val} />{isVisible('units') && (<div className="flex-1"><NexusSelect label={getLabel('units', 'واحد')} options={currentConfig.units} value={formData.unit} onChange={e=>handleChange('unit', e.target.value)} disabled={!serverStatus} error={errors.unit} /></div> )}</div>
+                                    <div className="flex gap-3">{isVisible('paramOptions') && (<NexusSelect label={getLabel('paramOptions', currentConfig.paramLabel)} options={currentConfig.paramOptions} value={formData.watt} onChange={e=>handleChange('watt', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.watt} />)}<NexusSelect label={getLabel('tolerances', 'تولرانس')} options={currentConfig.tolerances || []} value={formData.tol} onChange={e => handleChange('tol', e.target.value)} className="flex-1" disabled={!serverStatus}error={errors.tol}/></div>
+                                    <div className="flex gap-3">{isVisible('packages') && (<NexusSelect label={getLabel('packages', 'پکیج (Package)') } options={currentConfig.packages} value={formData.pkg} onChange={e=>handleChange('pkg', e.target.value)} className="flex-1" disabled={!serverStatus} error={errors.pkg} />)}{isVisible('techs') && (<div className="flex-1"><label className="text-gray-400 text-xs mb-1 block font-medium">{getLabel('techs', 'تکنولوژی/نوع دقیق')}</label><NexusSelect options={currentConfig.techs} value={formData.tech} onChange={e=>handleChange('tech', e.target.value)} disabled={!serverStatus} error={errors.tech} /></div>)}</div>
+                                    {/* شروع بخش اضافه شده: نمایش فیلدهای ۵ تا ۱۰ */}
                                     <div className="grid grid-cols-2 gap-3 mt-3">
                                         {DYNAMIC_FIELDS_MAP.filter(f => f.key.startsWith('list')).map(field => {
                                             const fConfig = currentConfig.fields?.[field.key];
                                             if (fConfig?.visible === false) return null;
                                             
+                                            // دریافت لیست آیتم‌ها
                                             const options = currentConfig[field.key] || [];
+                                            
+                                            // محاسبه نام فیلد + ستاره الزامی
+                                            const isReq = fConfig?.required;
+                                            
                                             const label = getLabel(field.key, field.label);
                                                
                                             return (
@@ -772,7 +471,7 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                             );
                                         })}
                                     </div>
-                                    
+                                    {/* پایان بخش اضافه شده */}
                                     <div className="h-px bg-white/5 my-2"></div>
                                     <div className="flex gap-3"><NexusInput label="تعداد *" type="number" value={formData.qty} onChange={e=>handleChange('qty', e.target.value)} onKeyPress={preventNonNumeric} className="flex-1" disabled={!serverStatus} error={errors.qty} /><NexusInput label="حداقل *" type="number" value={formData.min_qty} onChange={e=>handleChange('min_qty', e.target.value)} onKeyPress={preventNonNumeric} className="flex-1" disabled={!serverStatus} error={errors.min_qty} /></div>
                                     <div className="flex gap-3">
@@ -793,7 +492,6 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                     </div>
                                     <NexusInput label="پروژه / دلیل خرید" value={formData.reason} onChange={e=>handleChange('reason', e.target.value)} disabled={!serverStatus} />
                                     
-                                    {/* بخش افزودن لینک‌ها */}
                                     <div className="bg-white/5 p-3 rounded-xl border border-white/5">
                                         <label className="text-nexus-accent text-xs mb-2 block font-bold">لینک‌های خرید (اختیاری - حداکثر ۵ مورد)</label>
                                         <div className="flex gap-2 mb-2">
@@ -817,15 +515,25 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                         </div>
                                     </div>
 
-                                </div>
-                                <div className="mt-6 pt-4 border-t border-white/5"><button onClick={handleSubmit} disabled={!serverStatus} className={`w-full h-11 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${formData.id ? 'bg-gradient-to-r from-orange-500 to-amber-600' : 'bg-gradient-to-r from-nexus-primary to-purple-600'} disabled:opacity-50`}>{serverStatus ? (formData.id ? 'ذخیره تغییرات' : 'ذخیره در انبار') : 'سرور قطع است'}</button></div>
-                            </div>
-                        </div>
-                    </div>
+                <div className="mt-6 pt-4 border-t border-white/5">
+                  <button onClick={handleSubmit} disabled={!serverStatus || isLoading} className={`w-full h-11 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${formData.id ? 'bg-gradient-to-r from-orange-500 to-amber-600' : 'bg-gradient-to-r from-nexus-primary to-purple-600'} disabled:opacity-50`}>
+                    {isLoading ? (
+                      <span className="flex items-center gap-2"><i className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></i> در حال پردازش...</span>
+                    ) : (
+                      <>
+                        {serverStatus ? (formData.id ? 'ذخیره تغییرات' : 'ذخیره در انبار') : 'سرور قطع است'}
+                        <i data-lucide={formData.id ? "save" : "plus-circle"} className="w-5 h-5"></i>
+                      </>
+                    )}
+                  </button>
                 </div>
+              </div>
             </div>
-        </ErrorBoundary>
-    );
+          </div>
+        </div>
+      </div>
+    </ErrorBoundary>
+  );
 };
 
 // ----------------------------------------------------------------------------------------------------
