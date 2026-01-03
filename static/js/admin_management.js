@@ -17,6 +17,7 @@
 // استخراج هوک‌های مورد نیاز از کتابخانه React
 const { useState, useEffect, useRef } = React;
 
+
 // ----------------------------------------------------------------------------------------------------
 // [تگ: کامپوننت صفحه مدیریت تنظیمات]
 // ورودی‌ها (Props):
@@ -43,6 +44,10 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     // رفرنس‌ها برای مدیریت Drag & Drop (کشیدن و رها کردن دسته‌ها)
     const dragItem = useRef();
     const dragOverItem = useRef();
+
+    // رفرنس‌ها برای مدیریت Drag & Drop آیتم‌های لیست
+    const dragItemIdx = useRef(null);
+    const dragOverItemIdx = useRef(null);
 
     // هوک‌های سفارشی برای نمایش پیام و دیالوگ تایید
     const notify = useNotify();
@@ -184,6 +189,40 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
         newConfig[selectedType][listName] = newConfig[selectedType][listName].filter(item => item !== value); 
         setConfig(newConfig); 
     };
+
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: Drag & Drop آیتم‌های لیست]
+    // ------------------------------------------------------------------------------------------------
+    const handleItemDragStart = (e, index) => {
+        dragItemIdx.current = index;
+        e.target.classList.add('opacity-40');
+    };
+
+    const handleItemDragEnter = (listName, index) => {
+    // اگر روی همان آیتم هستیم یا درگ شروع نشده، کاری نکن
+    if (dragItemIdx.current === null || dragItemIdx.current === index) return;
+
+    const newConfig = { ...config };
+    const list = [...newConfig[selectedType][listName]];
+    
+    // جابه‌جایی ایمن
+    const draggedItemContent = list[dragItemIdx.current];
+    list.splice(dragItemIdx.current, 1);
+    list.splice(index, 0, draggedItemContent);
+    
+    dragItemIdx.current = index; 
+    newConfig[selectedType][listName] = list;
+    
+    // بروزرسانی بدون رندر مجدد سنگین آیکون‌ها در لحظه
+    setConfig(newConfig);
+};
+
+    const handleItemDragEnd = (e) => {
+        e.target.classList.remove('opacity-40');
+        dragItemIdx.current = null;
+        dragOverItemIdx.current = null;
+    };
+
 
     // ------------------------------------------------------------------------------------------------
     // [تگ: ذخیره تغییرات]
@@ -435,17 +474,36 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
                                             </div>
                                             
                                             {/* نمایش آیتم‌های موجود در لیست */}
-                                            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1 custom-scroll">
-                                                {(config[selectedType][listName] || []).map(item => (
-                                                    <div key={item} className="flex items-center gap-2 bg-white/5 px-2.5 py-1.5 rounded-lg border border-white/5 group hover:bg-white/10 transition">
-                                                        <span className="text-xs text-gray-300 font-mono">{item}</span>
-                                                        <div className="flex gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
+                                            {/* نمایش آیتم‌های موجود در لیست */}
+                                            <div 
+                                                className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1 custom-scroll"
+                                                onDragOver={(e) => e.preventDefault()} // این خط برای جلوگیری از خطای removeChild حیاتی است
+                                            >
+                                                {(config[selectedType][listName] || []).map((item, idx) => (
+                                                    // کد جدید همراه با آیکون گریپ
+                                                    <div 
+                                                        key={`${selectedType}-${listName}-${item}-${idx}`}
+                                                        draggable
+                                                        onDragStart={(e) => handleItemDragStart(e, idx)}
+                                                        onDragEnter={() => handleItemDragEnter(listName, idx)}
+                                                        onDragEnd={handleItemDragEnd}
+                                                        // تغییرات استایل: پدینگ چپ کمتر شد و cursor-move حذف شد (چون آیکون گریپ آن را دارد)
+                                                        className="flex items-center gap-2 bg-white/5 pl-1 pr-2.5 py-1.5 rounded-lg border border-white/5 group hover:bg-white/10 transition"
+                                                    >
+                                                        {/* --- آیکون جدید مخصوص درگ --- */}
+                                                        {/* pointer-events-none باعث می‌شود درگ توسط div اصلی مدیریت شود و تداخل ایجاد نشود */}
+                                                        <div className="text-gray-700 group-hover:text-gray-400 transition-colors cursor-grab pointer-events-none">
+                                                            <i data-lucide="grip-vertical" className="w-3.5 h-3.5"></i>
+                                                        </div>
+                                                        {/* --------------------------- */}
+
+                                                        <span className="text-xs text-gray-300 font-mono pointer-events-none flex-1">{item}</span>
+                                                        <div className="flex gap-1 opacity-50 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
                                                             <button onClick={() => setRenameModal({ open: true, type: 'item', oldVal: item, category: selectedType, listName })} className="text-blue-400 hover:text-blue-300"><i data-lucide="pencil" className="w-3 h-3"></i></button>
                                                             <button onClick={() => handleDeleteItem(listName, item)} className="text-red-400 hover:text-red-300"><i data-lucide="trash-2" className="w-3 h-3"></i></button>
                                                         </div>
                                                     </div>
                                                 ))}
-                                                {(config[selectedType][listName] || []).length === 0 && <span className="text-[10px] text-gray-600 italic">لیست خالی است</span>}
                                             </div>
                                         </div>
                                     ); 
