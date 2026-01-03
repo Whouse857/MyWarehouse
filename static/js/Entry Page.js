@@ -554,7 +554,8 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
 
     const isVisible = (key) => {
         const fConfig = currentConfig.fields?.[key];
-        const isBase = ['units', 'paramOptions', 'packages', 'techs'].includes(key);
+        // اضافه کردن tolerances به لیست فیلدهای پایه
+        const isBase = ['units', 'paramOptions', 'packages', 'techs', 'tolerances'].includes(key);
         return fConfig ? fConfig.visible : isBase;
     };
 
@@ -718,14 +719,16 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                                                 error={errors.watt} 
                                             />
                                         )}
-                                        <SearchableDropdown 
-                                            label={getLabel('tolerances', 'تولرانس')} 
-                                            options={currentConfig.tolerances || []} 
-                                            value={formData.tol} 
-                                            onChange={(val) => handleChange('tol', val)} 
-                                            disabled={!serverStatus}
-                                            error={errors.tol} 
-                                        />
+                                        {isVisible('tolerances') && (
+                                            <SearchableDropdown 
+                                                label={getLabel('tolerances', 'تولرانس')} 
+                                                options={currentConfig.tolerances || []} 
+                                                value={formData.tol} 
+                                                onChange={(val) => handleChange('tol', val)} 
+                                                disabled={!serverStatus}
+                                                error={errors.tol} 
+                                            />
+                                        )}
                                     </div>
                                     <div className="flex gap-3">
                                         {isVisible('packages') && (
