@@ -1,60 +1,64 @@
-// ====================================================================================================
-// نسخه: 0.45 (سیستم H&Y - افزودن قابلیت کپی، ذخیره ضرایب و تکمیل کارت‌ها)
-// فایل: projects page-logic.js (بخش منطق)
-// تهیه کننده: Sargoli
-//
-// تغییرات اعمال شده:
-// ۱. نمایش سود خالص پروژه به دلار و تومان در بخش آنالیز.
-// ۲. تفکیک "مجموع هزینه قطعات پارت" از "کل هزینه ارزی (با جانبی)".
-// ۳. بازنویسی کامل کارت‌های پروژه: نمایش تنوع، تعداد کل و قیمت دقیق هر پروژه در صفحه لیست.
-// ۴. تثبیت قابلیت Drag & Drop برای تغییر ترتیب قطعات با حفظ منطق‌های پایدار قبلی.
-// ۵. تمامی محاسبات با دقت ۶ رقم اعشار و بر اساس نرخ دلار زنده سیستم انجام می‌شود.
-// ۶. اضافه شدن قابلیت کپی برداری (Duplicate) از کل پروژه.
-// ۷. ذخیره و بازیابی نرخ تسعیر و درصد سود قطعه در دیتابیس.
-// ۸. نمایش تعداد کل قطعات مونتاژی در کارت پروژه.
-// ====================================================================================================
+/**
+ * ====================================================================================================
+ * فایل: projects page-logic.js
+ * نسخه: 0.48 (کامل و بدون حذفیات)
+ * * توضیحات:
+ * این فایل "مغز" صفحه پروژه‌ها است. تمامی محاسبات، ارتباط با سرور و مدیریت وضعیت (State) در اینجا
+ * انجام می‌شود.
+ * ====================================================================================================
+ */
 
 window.useProjectsLogic = (user, serverStatus) => {
+    // وارد کردن توابع React از محیط سراسری
     const { useState, useEffect, useCallback, useMemo } = React;
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: ابزارها و توابع کمکی]
-    // ------------------------------------------------------------------------------------------------
+    // ================================================================================================
+    // [SECTION 1] ابزارها و توابع کمکی سراسری
+    // ================================================================================================
     const fetchAPI = window.fetchAPI;
     const toShamsi = window.toShamsi;
     const notify = window.useNotify ? window.useNotify() : { show: (t, m) => console.log(t, m) };
     const dialog = window.useDialog ? window.useDialog() : { ask: () => Promise.resolve(true) };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: مدیریت وضعیت (State)]
-    // ------------------------------------------------------------------------------------------------
-    const [view, setView] = useState('list'); 
-    const [projects, setProjects] = useState([]);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [loading, setLoading] = useState(true);
-    const [liveUsdRate, setLiveUsdRate] = useState(window.USD_RATE || 60000);
+    // ================================================================================================
+    // [SECTION 2] تعریف وضعیت‌ها (State Definitions)
+    // ================================================================================================
     
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [projectForm, setProjectForm] = useState({ id: null, name: '', description: '' });
+    // --- وضعیت‌های کلی صفحه ---
+    const [view, setView] = useState('list'); 
+    const [projects, setProjects] = useState([]); 
+    const [searchTerm, setSearchTerm] = useState(""); 
+    const [loading, setLoading] = useState(true); 
+    const [liveUsdRate, setLiveUsdRate] = useState(window.USD_RATE || 60000); 
+    
+    // --- وضعیت‌های مربوط به فرم و مودال ---
+    const [isModalOpen, setIsModalOpen] = useState(false); 
+    const [projectForm, setProjectForm] = useState({ id: null, name: '', description: '' }); 
 
-    const [activeProject, setActiveProject] = useState(null);
-    const [bomItems, setBomItems] = useState([]);
-    const [extraCosts, setExtraCosts] = useState([]);
-    const [inventory, setInventory] = useState([]);
-    const [searchInventory, setSearchInventory] = useState("");
-    const [isSaving, setIsSaving] = useState(false);
+    // --- وضعیت‌های پروژه فعال (Active Project) ---
+    const [activeProject, setActiveProject] = useState(null); 
+    const [bomItems, setBomItems] = useState([]); 
+    const [extraCosts, setExtraCosts] = useState([]); 
+    const [inventory, setInventory] = useState([]); 
+    const [searchInventory, setSearchInventory] = useState(""); 
+    const [isSaving, setIsSaving] = useState(false); 
 
-    const [productionCount, setProductionCount] = useState(1);
+    // --- پارامترهای محاسباتی پروژه ---
+    const [productionCount, setProductionCount] = useState(1); 
     const [shortageData, setShortageData] = useState(null); 
-    const [isDeducting, setIsDeducting] = useState(false);
+    const [isDeducting, setIsDeducting] = useState(false); 
 
-    const [conversionRate, setConversionRate] = useState(0);
-    const [partProfit, setPartProfit] = useState(0);
+    const [conversionRate, setConversionRate] = useState(0); 
+    const [partProfit, setPartProfit] = useState(0); 
 
-    // وضعیت برای مدیریت جابجایی ترتیب (Drag & Drop)
-    const [draggedIndex, setDraggedIndex] = useState(null);
+    // --- وضعیت برای Drag & Drop ---
+    const [draggedIndex, setDraggedIndex] = useState(null); 
 
-    // دریافت نرخ دلار زنده
+    // ================================================================================================
+    // [SECTION 3] اثرات جانبی (Side Effects / useEffects)
+    // ================================================================================================
+
+    // 1. دریافت نرخ دلار زنده
     const fetchLiveRate = useCallback(async () => {
         try {
             const { ok, data } = await fetchAPI('/inventory/stats');
@@ -64,6 +68,7 @@ window.useProjectsLogic = (user, serverStatus) => {
         } catch (e) { console.error("H&Y System: Rate fetch failed"); }
     }, [fetchAPI]);
 
+    // 2. به‌روزرسانی آیکون‌های Lucide
     useEffect(() => {
         const timer = setTimeout(() => {
             if (window.lucide) {
@@ -73,6 +78,7 @@ window.useProjectsLogic = (user, serverStatus) => {
         return () => clearTimeout(timer);
     }, [view, projects, isModalOpen, bomItems, extraCosts, shortageData, searchInventory, loading, isSaving, isDeducting]);
 
+    // 3. لود کردن لیست پروژه‌ها
     const loadProjects = useCallback(async () => {
         if (!fetchAPI) return;
         setLoading(true);
@@ -86,6 +92,7 @@ window.useProjectsLogic = (user, serverStatus) => {
         }
     }, [fetchAPI, notify]);
 
+    // 4. لود کردن لیست موجودی انبار
     const loadInventory = useCallback(async () => {
         if (!fetchAPI) return;
         try {
@@ -94,22 +101,23 @@ window.useProjectsLogic = (user, serverStatus) => {
         } catch (e) { console.error("Inventory Load Error"); }
     }, [fetchAPI]);
 
+    // 5. اجرای اولیه
     useEffect(() => { 
         loadProjects(); 
         loadInventory();
         fetchLiveRate();
     }, [loadProjects, loadInventory, fetchLiveRate]);
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: هندلرهای Drag & Drop]
-    // ------------------------------------------------------------------------------------------------
+    // ================================================================================================
+    // [SECTION 4] هندلرهای Drag & Drop
+    // ================================================================================================
     const onDragStart = (e, index) => {
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = "move";
     };
 
     const onDragOver = (e, index) => {
-        e.preventDefault();
+        e.preventDefault(); 
     };
 
     const onDrop = (e, index) => {
@@ -120,13 +128,14 @@ window.useProjectsLogic = (user, serverStatus) => {
         const itemToMove = newItems[draggedIndex];
         newItems.splice(draggedIndex, 1);
         newItems.splice(index, 0, itemToMove);
+        
         setBomItems(newItems);
         setDraggedIndex(null);
     };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: کامپوننت نمایش مشخصات فنی رنگی]
-    // ------------------------------------------------------------------------------------------------
+    // ================================================================================================
+    // [SECTION 5] کامپوننت‌های کمکی داخلی
+    // ================================================================================================
     const SpecBadges = ({ item }) => {
         return (
             <div className="flex flex-wrap gap-1 mt-1">
@@ -138,9 +147,9 @@ window.useProjectsLogic = (user, serverStatus) => {
         );
     };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: سیستم چاپ BOM حرفه‌ای H&Y]
-    // ------------------------------------------------------------------------------------------------
+    // ================================================================================================
+    // [SECTION 6] سیستم چاپ
+    // ================================================================================================
     const handlePrintBOM = () => {
         const printWindow = window.open('', '_blank');
         const purchaseList = bomItems.filter(item => (item.inventory_qty || 0) < (item.required_qty * productionCount));
@@ -265,9 +274,9 @@ window.useProjectsLogic = (user, serverStatus) => {
         printWindow.document.close();
     };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: مدیریت عملیات]
-    // ------------------------------------------------------------------------------------------------
+    // ================================================================================================
+    // [SECTION 7] توابع مدیریت پروژه و عملیات
+    // ================================================================================================
 
     const handleOpenBOM = async (project) => {
         if (!fetchAPI || !project?.id) return;
@@ -336,10 +345,9 @@ window.useProjectsLogic = (user, serverStatus) => {
     const saveBOMDetails = async () => {
         setIsSaving(true);
         try {
-            // ۱. محاسبه دستی با محافظت در برابر تقسیم بر صفر (جلوگیری از ارسال Infinity)
+            // ۱. محاسبه دستی با محافظت در برابر تقسیم بر صفر
             const bomTotalUSD = bomItems.reduce((sum, item) => {
                 const price = parseFloat(item.toman_price || 0);
-                // اگر نرخ دلار صفر یا نامعتبر بود، ۱ در نظر بگیر تا تقسیم بر صفر نشود
                 let rate = parseFloat(item.usd_rate);
                 if (!rate || rate <= 0) rate = 1; 
                 
@@ -372,7 +380,6 @@ window.useProjectsLogic = (user, serverStatus) => {
                 await loadProjects(); // رفرش لیست
                 setView('list'); // بازگشت قطعی به لیست
             } else {
-                // [مهم] نمایش خطای سمت سرور اگر عملیات موفق نبود
                 console.error('Server Save Error:', data);
                 notify.show('خطا', (data && data.error) || 'سرور خطا داد اما پیامی نفرستاد.', 'error');
             }
@@ -383,6 +390,8 @@ window.useProjectsLogic = (user, serverStatus) => {
             setIsSaving(false); 
         }
     };
+
+    // --- توابع کمکی لیست BOM ---
 
     const addPartToBOM = (part) => {
         const exists = bomItems.find(item => item.part_id === part.id);
@@ -428,6 +437,8 @@ window.useProjectsLogic = (user, serverStatus) => {
         setExtraCosts(newCosts);
     };
 
+    // --- تابع کسر موجودی (Deduct) ---
+    
     const handleDeduct = async (force = false) => {
         setIsDeducting(true);
         try {
@@ -458,42 +469,30 @@ window.useProjectsLogic = (user, serverStatus) => {
         }
     };
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: منطق محاسبات مالی پیشرفته]
-    // ------------------------------------------------------------------------------------------------
+    // ================================================================================================
+    // [SECTION 8] محاسبات
+    // ================================================================================================
     const totals = useMemo(() => {
-        // ۱. مجموع ارزش دلاری قطعات برای ۱ واحد
         const bomUnitUSD = bomItems.reduce((sum, item) => {
             const unitPriceUSD = parseFloat(item.toman_price || 0) / parseFloat(item.usd_rate || 1);
             return sum + (unitPriceUSD * parseFloat(item.required_qty || 0));
         }, 0);
 
-        // ۲. مجموع هزینه های جانبی دلاری برای ۱ واحد
         const extraUnitUSD = extraCosts.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
-        
-        // ۳. هزینه پایه کل برای ۱ واحد (دلار)
         const totalUnitUSD = bomUnitUSD + extraUnitUSD;
-        
-        // ۴. هزینه پایه کل برای ۱ واحد (تومان - بر اساس نرخ روز)
         const unitBaseToman = totalUnitUSD * liveUsdRate;
-        
-        // ۵. اعمال ضریب تسعیر (روی هزینه پایه)
         const afterConversionToman = unitBaseToman * (1 + (parseFloat(conversionRate) || 0) / 100);
-        
-        // ۶. محاسبه سود بر اساس قیمت نهایی
         const finalUnitToman = afterConversionToman * (1 + (parseFloat(partProfit) || 0) / 100);
-        
-        // ۷. مقادیر سود برای کل پارت
         const totalProfitToman = (finalUnitToman - afterConversionToman) * productionCount;
         const totalProfitUSD = totalProfitToman / liveUsdRate;
 
         return { 
             usdUnit: bomUnitUSD,
-            usdBatch: bomUnitUSD * productionCount, // مجموع هزینه قطعات پارت
+            usdBatch: bomUnitUSD * productionCount, 
             extraUSD: extraUnitUSD,
             variety: bomItems.length,
             totalParts: bomItems.reduce((sum, item) => sum + (parseFloat(item.required_qty) || 0), 0) * productionCount,
-            totalProductionUSD: totalUnitUSD * productionCount, // کل هزینه ارزی پارت (با جانبی)
+            totalProductionUSD: totalUnitUSD * productionCount, 
             totalProductionToman: finalUnitToman * productionCount,
             unitFinalToman: finalUnitToman,
             profitBatchUSD: totalProfitUSD,
@@ -501,6 +500,7 @@ window.useProjectsLogic = (user, serverStatus) => {
         };
     }, [bomItems, extraCosts, productionCount, conversionRate, partProfit, liveUsdRate]);
 
+    // فیلتر جستجو
     const filteredInventory = inventory.filter(p => 
         p.val.toLowerCase().includes(searchInventory.toLowerCase()) || 
         p.part_code.toLowerCase().includes(searchInventory.toLowerCase())
@@ -510,6 +510,9 @@ window.useProjectsLogic = (user, serverStatus) => {
         p.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    // ================================================================================================
+    // [SECTION 9] خروجی نهایی هوک
+    // ================================================================================================
     return {
         view, setView,
         projects, setProjects,
@@ -530,6 +533,7 @@ window.useProjectsLogic = (user, serverStatus) => {
         conversionRate, setConversionRate,
         partProfit, setPartProfit,
         draggedIndex, setDraggedIndex,
+        
         fetchLiveRate,
         loadProjects,
         loadInventory,
@@ -549,6 +553,7 @@ window.useProjectsLogic = (user, serverStatus) => {
         addExtraCost,
         updateExtraCost,
         handleDeduct,
+        
         totals,
         filteredInventory,
         filteredProjects,

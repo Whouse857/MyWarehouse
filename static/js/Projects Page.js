@@ -1,27 +1,34 @@
-// ====================================================================================================
-// نسخه: 0.45 (سیستم H&Y - افزودن قابلیت کپی، ذخیره ضرایب و تکمیل کارت‌ها)
-// فایل: Projects Page.js
-// تهیه کننده: Sargoli
-//
-// تغییرات اعمال شده:
-// ۱. نمایش سود خالص پروژه به دلار و تومان در بخش آنالیز.
-// ۲. تفکیک "مجموع هزینه قطعات پارت" از "کل هزینه ارزی (با جانبی)".
-// ۳. بازنویسی کامل کارت‌های پروژه: نمایش تنوع، تعداد کل و قیمت دقیق هر پروژه در صفحه لیست.
-// ۴. تثبیت قابلیت Drag & Drop برای تغییر ترتیب قطعات با حفظ منطق‌های پایدار قبلی.
-// ۵. تمامی محاسبات با دقت ۶ رقم اعشار و بر اساس نرخ دلار زنده سیستم انجام می‌شود.
-// ۶. اضافه شدن قابلیت کپی برداری (Duplicate) از کل پروژه.
-// ۷. ذخیره و بازیابی نرخ تسعیر و درصد سود قطعه در دیتابیس.
-// ۸. نمایش تعداد کل قطعات مونتاژی در کارت پروژه.
-// ====================================================================================================
+/**
+ * ====================================================================================================
+ * فایل: Projects Page.js
+ * نسخه: 0.48 (UI Layer - شامل Safety Check و کلاس CSS درگ - کد کامل)
+ * * توضیحات:
+ * این فایل "پوسته" صفحه پروژه‌ها است.
+ * ====================================================================================================
+ */
 
 const { useState, useEffect, useCallback, useMemo } = React;
 
 const ProjectsPage = ({ user, serverStatus }) => {
     
-    // فراخوانی هوک منطق برنامه
+    // ================================================================================================
+    // [Safety Check] بررسی بارگذاری فایل منطق
+    // اگر فایل Logic هنوز لود نشده باشد، ساعت شنی نمایش داده می‌شود تا برنامه کرش نکند.
+    // ================================================================================================
+    if (!window.useProjectsLogic) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full text-white space-y-4">
+                <div className="lds-hourglass"></div>
+                <span className="text-gray-400 font-bold animate-pulse">در حال بارگذاری ماژول پروژه...</span>
+            </div>
+        );
+    }
+
+    // ================================================================================================
+    // [SECTION 1] اتصال به منطق
+    // ================================================================================================
     const logic = window.useProjectsLogic(user, serverStatus);
 
-    // استخراج متغیرها و توابع مورد نیاز
     const {
         view, setView,
         searchTerm, setSearchTerm,
@@ -61,13 +68,15 @@ const ProjectsPage = ({ user, serverStatus }) => {
         toShamsi
     } = logic;
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: رندر رابط کاربری]
-    // ------------------------------------------------------------------------------------------------
+    // ================================================================================================
+    // [SECTION 2] رندر رابط کاربری
+    // ================================================================================================
 
+    // --- حالت 1: نمایش لیست پروژه‌ها ---
     if (view === 'list') {
         return (
             <div className="flex-1 p-8 pb-20 overflow-y-auto custom-scroll text-right" dir="rtl">
+                {/* بخش هدر صفحه لیست */}
                 <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 pb-6 border-b border-white/5">
                     <div>
                         <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
@@ -94,31 +103,23 @@ const ProjectsPage = ({ user, serverStatus }) => {
                     </div>
                 </div>
 
+                {/* شبکه کارت‌های پروژه */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredProjects.map(p => {
                         const hasBOM = (p.bom_count || 0) > 0;
-                        
-                        // [محاسبه دقیق قیمت]
-                        // ۱. قیمت دلاری پایه
                         const usdBase = parseFloat(p.total_price_usd || 0);
-                        // ۲. دریافت ضرایب
                         const cRate = parseFloat(p.conversion_rate || 0);
                         const pProfit = parseFloat(p.part_profit || 0);
-                        
-                        // ۳. محاسبه قیمت نهایی: (قیمت دلار × نرخ روز) × (ضریب تسعیر) × (ضریب سود)
                         const baseToman = usdBase * liveUsdRate;
                         const finalPriceToman = baseToman * (1 + cRate / 100) * (1 + pProfit / 100);
 
                         return (
                             <div key={p.id} onClick={() => handleOpenBOM(p)} className="glass-panel p-5 rounded-[2rem] border border-white/5 hover:border-nexus-primary/40 transition-all group flex flex-col h-[280px] shadow-xl overflow-hidden relative cursor-pointer">
-                                {/* افکت پس‌زمینه */}
                                 <div className="absolute top-0 right-0 w-40 h-40 bg-nexus-primary/5 blur-3xl -z-10 group-hover:bg-nexus-primary/10 transition-all"></div>
                                 
-                                {/* هدر کارت: عنوان و دکمه‌ها */}
                                 <div className="flex justify-between items-start mb-3 relative z-10">
                                     <h3 className="text-lg font-black text-white truncate pl-2">{p.name}</h3>
                                     
-                                    {/* منوی عملیات مخفی */}
                                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-xl p-1 backdrop-blur-md absolute left-0 top-0">
                                         <button onClick={(e) => handleDuplicateProject(e, p.id)} title="کپی" className="p-1.5 rounded-lg text-amber-400 hover:bg-amber-500 hover:text-white transition-all"><i data-lucide="copy" className="w-4 h-4"></i></button>
                                         <button onClick={(e) => { e.stopPropagation(); setProjectForm(p); setIsModalOpen(true); }} title="ویرایش" className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-500 hover:text-white transition-all"><i data-lucide="edit-3" className="w-4 h-4"></i></button>
@@ -126,10 +127,8 @@ const ProjectsPage = ({ user, serverStatus }) => {
                                     </div>
                                 </div>
 
-                                {/* توضیحات پروژه */}
                                 <p className="text-gray-400 text-[11px] leading-relaxed line-clamp-2 mb-4 h-8">{p.description || 'توضیحات ثبت نشده...'}</p>
                                 
-                                {/* بج‌های اطلاعاتی (تعداد و تنوع) */}
                                 <div className="flex flex-wrap gap-2 mb-auto">
                                     <div className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 flex items-center gap-1.5">
                                         <i data-lucide="layers" className="w-3 h-3 text-indigo-400"></i>
@@ -141,10 +140,7 @@ const ProjectsPage = ({ user, serverStatus }) => {
                                     </div>
                                 </div>
 
-                                {/* فوتر کارت: تاریخ (راست) و قیمت (چپ) */}
                                 <div className="pt-4 border-t border-white/5 mt-2 flex justify-between items-end relative z-10">
-                                    
-                                    {/* [اصلاح شده] تاریخ در سمت راست با چیدمان ثابت */}
                                     <div className="flex flex-col gap-1">
                                         <span className="text-[9px] text-gray-500 font-bold">آخرین تغییر:</span>
                                         <span className="text-[10px] text-gray-400 font-mono bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
@@ -152,7 +148,6 @@ const ProjectsPage = ({ user, serverStatus }) => {
                                         </span>
                                     </div>
 
-                                    {/* بخش قیمت در سمت چپ */}
                                     {hasBOM ? (
                                         <div className="flex flex-col items-end">
                                             <div className="flex items-baseline gap-1">
@@ -175,6 +170,7 @@ const ProjectsPage = ({ user, serverStatus }) => {
                     })}
                 </div>
 
+                {/* مودال ایجاد/ویرایش پروژه */}
                 {isModalOpen && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
                         <div className="glass-panel border border-white/10 p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl bg-[#0f172a]/95 text-right animate-scale-in" onClick={e => e.stopPropagation()}>
@@ -203,8 +199,10 @@ const ProjectsPage = ({ user, serverStatus }) => {
         );
     }
 
+    // --- حالت 2: نمایش جزئیات پروژه (BOM Editor) ---
     return (
         <div className="flex-1 p-8 pb-20 overflow-y-auto custom-scroll text-right" dir="rtl">
+            {/* نوار ابزار بالای صفحه جزئیات */}
             <div className="flex items-center justify-between mb-8 pb-6 border-b border-white/5">
                 <div className="flex items-center gap-4">
                     <button onClick={() => setView('list')} className="p-3 rounded-2xl bg-white/5 text-gray-400 hover:text-white transition-all hover:bg-white/10"><i data-lucide="arrow-right" className="w-6 h-6"></i></button>
@@ -230,9 +228,13 @@ const ProjectsPage = ({ user, serverStatus }) => {
                 </div>
             </div>
 
+            {/* بخش اصلی ویرایشگر */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+                
+                {/* ستون راست: جدول قطعات و هزینه‌ها */}
                 <div className="xl:col-span-8 space-y-6">
                     <div className="glass-panel rounded-[2rem] border border-white/5 overflow-hidden">
+                        {/* هدر جدول و جستجوی قطعه */}
                         <div className="p-6 bg-white/5 border-b border-white/5 flex justify-between items-center">
                             <h3 className="font-bold text-white flex items-center gap-2"><i data-lucide="package" className="w-5 h-5 text-nexus-primary"></i> لیست قطعات پروژه</h3>
                             <div className="relative w-80">
@@ -242,6 +244,7 @@ const ProjectsPage = ({ user, serverStatus }) => {
                                     className="w-full bg-black/40 border border-white/5 rounded-xl py-2 pr-9 pl-3 text-xs text-white outline-none focus:border-nexus-primary"
                                     value={searchInventory} onChange={(e) => setSearchInventory(e.target.value)}
                                 />
+                                {/* دراپ‌داون نتایج جستجو */}
                                 {searchInventory && (
                                     <div className="absolute top-full mt-2 left-0 right-0 glass-panel rounded-xl border border-white/10 shadow-2xl z-50 p-2 overflow-hidden bg-[#1e293b]">
                                         {filteredInventory.length > 0 ? filteredInventory.map(p => (
@@ -261,6 +264,7 @@ const ProjectsPage = ({ user, serverStatus }) => {
                             </div>
                         </div>
 
+                        {/* جدول اقلام BOM */}
                         <div className="overflow-x-auto">
                             <table className="w-full text-right border-collapse">
                                 <thead className="text-[10px] text-gray-500 uppercase tracking-widest bg-black/20 font-black">
@@ -293,7 +297,8 @@ const ProjectsPage = ({ user, serverStatus }) => {
                                                 onDragStart={(e) => onDragStart(e, idx)}
                                                 onDragOver={(e) => onDragOver(e, idx)}
                                                 onDrop={(e) => onDrop(e, idx)}
-                                                className={`hover:bg-white/5 transition-colors group font-medium cursor-move ${draggedIndex === idx ? 'opacity-30 border-2 border-dashed border-nexus-primary' : ''}`}
+                                                /* [اصلاح شد] اتصال کلاس CSS برای درگ و دراپ */
+                                                className={`bom-item-row hover:bg-white/5 cursor-move group font-medium ${draggedIndex === idx ? 'dragging' : ''}`}
                                             >
                                                 <td className="p-4 text-gray-600"><i data-lucide="grip-vertical" className="w-4 h-4 opacity-0 group-hover:opacity-100"></i></td>
                                                 <td className="p-4 font-mono text-[10px] text-nexus-accent">{item.part_code}</td>
@@ -340,6 +345,7 @@ const ProjectsPage = ({ user, serverStatus }) => {
                         </div>
                     </div>
 
+                    {/* پنل هزینه‌های جانبی */}
                     <div className="glass-panel rounded-[2rem] border border-white/5 p-6 shadow-lg">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="font-bold text-white flex items-center gap-2"><i data-lucide="calculator" className="w-5 h-5 text-nexus-primary"></i> هزینه‌های جانبی تولید (دلار)</h3>
@@ -367,6 +373,7 @@ const ProjectsPage = ({ user, serverStatus }) => {
                     </div>
                 </div>
 
+                {/* ستون چپ: پنل محاسبات نهایی و عملیات انبار */}
                 <div className="xl:col-span-4 sticky top-8 space-y-6">
                     <div className="glass-panel rounded-[2.5rem] p-8 border border-white/10 shadow-2xl bg-gradient-to-b from-white/5 to-transparent">
                         <h3 className="text-lg font-black text-white mb-6 border-b border-white/5 pb-4">آنالیز نهایی هزینه پروژه (دقیق)</h3>
@@ -465,6 +472,7 @@ const ProjectsPage = ({ user, serverStatus }) => {
                         </div>
                     </div>
 
+                    {/* دکمه عملیات انبار */}
                     <div className="glass-panel rounded-[2.5rem] p-8 border border-white/10 shadow-2xl bg-emerald-500/5">
                         <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
                              <i data-lucide="shopping-cart" className="w-5 h-5 text-emerald-400"></i> عملیات برداشت از انبار
@@ -489,6 +497,7 @@ const ProjectsPage = ({ user, serverStatus }) => {
                 </div>
             </div>
 
+            {/* مودال هشدار کسری موجودی */}
             {shortageData && (
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
                     <div className="glass-panel border border-rose-500/30 p-8 rounded-[3rem] max-w-2xl w-full shadow-2xl bg-[#0f172a] text-right animate-scale-in" onClick={e => e.stopPropagation()}>
