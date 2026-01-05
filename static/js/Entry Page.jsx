@@ -1,9 +1,12 @@
 // ====================================================================================================
-// نسخه: 0.26
+// نسخه: 0.27 (اصلاح شده)
 // فایل: EntryPage.jsx
 // توضیحات: فایل نمایش اصلاح شده.
 // - جایگزینی فیلترهای قدیمی با سیستم Query Builder در پاپ‌آپ مشخصات.
 // - نمایش نوار فیلترهای فعال به صورت چیپ‌های هوشمند.
+// - رفع باگ: جلوگیری از کرش در ActiveFiltersBar هنگام خالی بودن مقادیر
+// - اصلاح: رفع مشکل مخفی شدن فیلتر هنگام خالی بودن لیست
+// - اصلاح جدید: افزودن onMouseDown به پاپ‌آپ برای جلوگیری از بسته شدن ناخواسته هنگام کلیک داخل آن
 // ====================================================================================================
 
 const { useState, useEffect, useRef } = React;
@@ -14,7 +17,12 @@ const { useEntryPageLogic, getPartCode, DYNAMIC_FIELDS_MAP } = window;
 // ----------------------------------------------------------------------------------------------------
 const FilterPopup = ({ title, children, onClear, width }) => {
     return (
-        <div className="filter-popup" style={width ? {width} : {}} onClick={e => e.stopPropagation()}>
+        <div 
+            className="filter-popup" 
+            style={width ? {width} : {}} 
+            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()} // اضافه شده: جلوگیری از بسته شدن هنگام کلیک (mousedown)
+        >
             <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/10">
                 <span className="text-xs font-bold text-nexus-accent">{title}</span>
                 <button onClick={onClear} className="text-[10px] text-gray-500 hover:text-red-400 transition">پاک کردن</button>
@@ -32,7 +40,9 @@ const FilterPopup = ({ title, children, onClear, width }) => {
 const ActiveFiltersBar = ({ codeFilter, specConditions, onClearCode, onRemoveSpec, setCodeFilter }) => {
     // بررسی اینکه آیا فیلتری فعال است؟
     const hasCode = codeFilter.trim() !== '';
-    const activeSpecs = specConditions.filter(c => c.value.trim() !== '');
+    
+    // [اصلاح شده]: بررسی امن برای جلوگیری از خطا روی مقادیر undefined
+    const activeSpecs = specConditions.filter(c => c.value && String(c.value).trim() !== '');
 
     if (!hasCode && activeSpecs.length === 0) return null;
 
@@ -213,7 +223,8 @@ const EntryPage = (props) => {
                                 />
 
                                 {/* هدر لیست */}
-                                <div className="grid grid-cols-12 gap-2 bg-black/30 p-3 border-b border-white/5 text-[11px] text-gray-400 font-bold items-center sticky top-0 z-20">
+                                {/* اصلاح شده: افزایش z-index به 30 برای اطمینان از نمایش صحیح منوها */}
+                                <div className="grid grid-cols-12 gap-2 bg-black/30 p-3 border-b border-white/5 text-[11px] text-gray-400 font-bold items-center sticky top-0 z-30">
                                     
                                     {/* ستون کد اختصاصی */}
                                     <div className="col-span-2 text-right pr-2 flex items-center gap-2 relative">
@@ -303,33 +314,41 @@ const EntryPage = (props) => {
                                 
                                 {/* بدنه لیست */}
                                 <div className="p-2 space-y-2">
-                                    {filteredParts.map(p => {
-                                        const pCode = getPartCode(p, globalConfig);
-                                        return (
-                                            <div key={p.id} className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg border border-transparent hover:border-white/10 hover:bg-white/5 transition-all ${formData.id === p.id ? 'bg-nexus-primary/10 !border-nexus-primary/50' : ''}`}>
-                                                <div className="col-span-2 text-right text-nexus-accent font-mono text-[14px] font-bold tracking-tighter">{pCode}</div>
-                                                <div className="col-span-5 text-right flex flex-col justify-center gap-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-white text-lg font-black ltr font-sans tracking-wide">{p.val}</span>
-                                                        <span className="text-xs text-nexus-accent font-bold px-1.5 py-0.5 bg-nexus-accent/10 rounded">{p.package}</span>
+                                    {filteredParts.length > 0 ? (
+                                        filteredParts.map(p => {
+                                            const pCode = getPartCode(p, globalConfig);
+                                            return (
+                                                <div key={p.id} className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg border border-transparent hover:border-white/10 hover:bg-white/5 transition-all ${formData.id === p.id ? 'bg-nexus-primary/10 !border-nexus-primary/50' : ''}`}>
+                                                    <div className="col-span-2 text-right text-nexus-accent font-mono text-[14px] font-bold tracking-tighter">{pCode}</div>
+                                                    <div className="col-span-5 text-right flex flex-col justify-center gap-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-white text-lg font-black ltr font-sans tracking-wide">{p.val}</span>
+                                                            <span className="text-xs text-nexus-accent font-bold px-1.5 py-0.5 bg-nexus-accent/10 rounded">{p.package}</span>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2 text-[10px] text-gray-400 items-center">
+                                                            {p.type && <span className="text-blue-300 font-bold">{p.type}</span>}
+                                                            {p.watt && <span className="flex items-center gap-1"><i data-lucide="zap" className="w-3 h-3 text-yellow-500"></i>{p.watt}</span>}
+                                                            {p.tolerance && <span className="text-purple-400 font-bold">{p.tolerance}</span>}
+                                                            {p.tech && <span className="text-gray-500 border-x border-gray-700 px-2">{p.tech}</span>}
+                                                            {p.storage_location && <span className="flex items-center gap-1 text-orange-300 bg-orange-500/10 px-1 rounded border border-orange-500/20"><i data-lucide="map-pin" className="w-3 h-3"></i>{p.storage_location}</span>}
+                                                        </div>
                                                     </div>
-                                                    <div className="flex flex-wrap gap-2 text-[10px] text-gray-400 items-center">
-                                                        {p.type && <span className="text-blue-300 font-bold">{p.type}</span>}
-                                                        {p.watt && <span className="flex items-center gap-1"><i data-lucide="zap" className="w-3 h-3 text-yellow-500"></i>{p.watt}</span>}
-                                                        {p.tolerance && <span className="text-purple-400 font-bold">{p.tolerance}</span>}
-                                                        {p.tech && <span className="text-gray-500 border-x border-gray-700 px-2">{p.tech}</span>}
-                                                        {p.storage_location && <span className="flex items-center gap-1 text-orange-300 bg-orange-500/10 px-1 rounded border border-orange-500/20"><i data-lucide="map-pin" className="w-3 h-3"></i>{p.storage_location}</span>}
+                                                    <div className="col-span-1 text-center"><span className={`px-2 py-0.5 rounded text-xs font-bold ${p.quantity < p.min_quantity ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.quantity}</span></div>
+                                                    <div className="col-span-2 text-center text-xs text-amber-400 ltr font-mono">{(p.toman_price||0).toLocaleString()}</div>
+                                                    <div className="col-span-2 flex justify-center gap-3">
+                                                        <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }} disabled={!serverStatus} title="ویرایش" className="w-9 h-9 rounded-full bg-nexus-primary/20 text-nexus-primary hover:bg-nexus-primary hover:text-white flex items-center justify-center transition-all shadow-lg hover:shadow-primary/50 disabled:opacity-30 disabled:cursor-not-allowed"><i data-lucide="pencil" className="w-5 h-5"></i></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} disabled={!serverStatus} title="حذف" className="w-9 h-9 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
                                                     </div>
                                                 </div>
-                                                <div className="col-span-1 text-center"><span className={`px-2 py-0.5 rounded text-xs font-bold ${p.quantity < p.min_quantity ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.quantity}</span></div>
-                                                <div className="col-span-2 text-center text-xs text-amber-400 ltr font-mono">{(p.toman_price||0).toLocaleString()}</div>
-                                                <div className="col-span-2 flex justify-center gap-3">
-                                                    <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }} disabled={!serverStatus} title="ویرایش" className="w-9 h-9 rounded-full bg-nexus-primary/20 text-nexus-primary hover:bg-nexus-primary hover:text-white flex items-center justify-center transition-all shadow-lg hover:shadow-primary/50 disabled:opacity-30 disabled:cursor-not-allowed"><i data-lucide="pencil" className="w-5 h-5"></i></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} disabled={!serverStatus} title="حذف" className="w-9 h-9 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                            );
+                                        })
+                                    ) : (
+                                        /* اصلاح شده: نمایش وضعیت خالی با ارتفاع مناسب جهت جلوگیری از بهم ریختگی منوهای فیلتر */
+                                        <div className="flex flex-col items-center justify-center py-10 text-gray-500 opacity-50 min-h-[200px]">
+                                            <i data-lucide="search-x" className="w-12 h-12 mb-2"></i>
+                                            <span className="text-sm">موردی یافت نشد</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
