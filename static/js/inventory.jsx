@@ -1,53 +1,19 @@
 // ====================================================================================================
 // نسخه: 0.20
-// فایل: inventory.js
+// فایل: inventory.jsx
 // تهیه کننده: ------
 //
-// توضیحات کلی ماژول:
-// این فایل مسئول نمایش داشبورد تحلیلی و آماری انبار (Inventory Dashboard) است.
-// 
-// وظایف اصلی:
-// ۱. نمایش کارت‌های KPI (شاخص‌های کلیدی عملکرد) مانند ارزش کل انبار، تعداد قطعات و امتیاز سلامت.
-// ۲. نمایش نمودارها و جداول تفکیکی برای دسته‌بندی‌های مختلف (مقاومت، خازن و ...).
-// ۳. شناسایی و گزارش قطعاتی که موجودی آن‌ها از حد حداقل (Min Qty) کمتر شده است (Shortages).
-// ۴. قابلیت چاپ لیست خرید برای قطعات دارای کسری.
-// ۵. محاسبه ارزش دلاری و ریالی کل موجودی بر اساس نرخ روز.
+// توضیحات کلی ماژول ظاهر:
+// این فایل مسئول نمایش داشبورد تحلیلی است و هیچ منطق مستقلی ندارد.
+// تمام داده‌ها (آمار، لیست کسری، تنظیمات) از هوک `useInventoryLogic` دریافت می‌شوند.
 // ====================================================================================================
 
-// ----------------------------------------------------------------------------------------------------
-// [تگ: توابع فرمت‌دهی اعداد]
-// توابع کمکی برای نمایش زیبای اعداد با جداکننده هزارگان و اعشار.
-// ----------------------------------------------------------------------------------------------------
-const formatDecimal = (num) => {
-    if (num === undefined || num === null || isNaN(num)) return '0.00';
-    return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
-const formatInteger = (num) => {
-    if (num === undefined || num === null || isNaN(num)) return '0';
-    return Number(num).toLocaleString('en-US');
-};
-
-// ----------------------------------------------------------------------------------------------------
-// [تگ: تولید کد قطعه در آمار]
-// مشابه تابع موجود در صفحه ورود، این تابع کد ۱۲ رقمی قطعه را برای نمایش در لیست‌های آماری تولید می‌کند.
-// اگر کد در دیتابیس باشد از آن استفاده می‌کند، وگرنه به صورت پویا (Prefix + ID) می‌سازد.
-// ----------------------------------------------------------------------------------------------------
-const getPartCodeInv = (item, config) => {
-    if (!item) return "---";
-    // اولویت با کد اختصاصی ذخیره شده در دیتابیس (بسیار مهم)
-    if (item.part_code) return item.part_code; 
-    
-    // حالت رزرو برای قطعات قدیمی که کد ندارند
-    const prefix = (config && config[item.type]?.prefix) || "PRT";
-    const numeric = String(item.id || 0).padStart(9, '0');
-    return `${prefix}${numeric}`;
-};
+// اطمینان از دسترسی به React
+const React = window.React;
 
 // ----------------------------------------------------------------------------------------------------
 // [تگ: کامپوننت کارت KPI]
-// کامپوننت نمایشی برای کارت‌های بالای داشبورد (مثل ارزش کل، تعداد کل و ...).
-// دارای انیمیشن ورود و افکت‌های نوری (Glow Effect) در پس‌زمینه.
+// کامپوننت نمایشی برای کارت‌های بالای داشبورد
 // ----------------------------------------------------------------------------------------------------
 const KPICard = ({ title, value, subtitle, icon, color, delay = 0 }) => (
     <div 
@@ -75,7 +41,6 @@ const KPICard = ({ title, value, subtitle, icon, color, delay = 0 }) => (
 
 // ----------------------------------------------------------------------------------------------------
 // [تگ: کامپوننت لینک‌های خرید]
-// نمایش لیست لینک‌های خرید آنلاین به صورت دکمه‌های کوچک در جدول کسری‌ها.
 // ----------------------------------------------------------------------------------------------------
 const PurchaseLinks = ({ links }) => {
     if (!links || links.length === 0) return <span className="text-[10px] text-gray-600">-</span>;
@@ -103,128 +68,18 @@ const PurchaseLinks = ({ links }) => {
 // [تگ: کامپوننت اصلی صفحه موجودی]
 // ----------------------------------------------------------------------------------------------------
 const InventoryPage = () => {
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: وضعیت‌های کامپوننت]
-    // stats: داده‌های آماری دریافت‌شده از سرور (شامل مجموع‌ها، دسته‌بندی‌ها و لیست کسری).
-    // config: تنظیمات سیستم (برای خواندن پیشوند کدها و نام دسته‌ها).
-    // activeTab: تب فعال فعلی (نمای کلی، دسته‌بندی‌ها، کسری‌ها).
-    // ------------------------------------------------------------------------------------------------
-    const [stats, setStats] = React.useState(null);
-    const [config, setConfig] = React.useState(null);
-    const [loading, setLoading] = React.useState(true);
-    const [activeTab, setActiveTab] = React.useState('overview');
-    const notify = useNotify();
+    // اتصال به هوک منطق
+    const {
+        stats, config, loading, activeTab,
+        setActiveTab, loadStats, handlePrintShortages,
+        totalItems, totalQty, totalCategories, healthScore, maxCategoryVal, topCategory, avgPrice,
+        helpers
+    } = window.useInventoryLogic();
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: دریافت اطلاعات]
-    // فراخوانی موازی API آمار (/inventory/stats) و تنظیمات (/settings/config).
-    // ------------------------------------------------------------------------------------------------
-    const loadStats = React.useCallback(async () => {
-        setLoading(true);
-        try {
-            const [statsRes, configRes] = await Promise.all([
-                fetchAPI('/inventory/stats'),
-                fetchAPI('/settings/config')
-            ]);
-            if (statsRes.ok) setStats(statsRes.data);
-            if (configRes.ok) setConfig(configRes.data);
-            else notify.show('خطا', 'عدم دریافت اطلاعات آماری', 'error');
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    React.useEffect(() => { loadStats(); }, [loadStats]);
-    
-    // رندر مجدد آیکون‌ها هنگام تغییر تب یا دریافت داده جدید
-    React.useEffect(() => {
-        if (window.lucide) window.lucide.createIcons();
-    }, [stats, activeTab]);
-
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: چاپ لیست کسری]
-    // ایجاد یک پنجره جدید مرورگر، تولید HTML مخصوص پرینت و باز کردن دیالوگ چاپ سیستم.
-    // این بخش یک جدول تمیز و ساده (سیاه و سفید) برای ارائه به واحد خرید تولید می‌کند.
-    // ------------------------------------------------------------------------------------------------
-    const handlePrintShortages = () => {
-        if (!stats || !stats.shortages || stats.shortages.length === 0) return;
-        const printWindow = window.open('', '_blank');
-        const today = getJalaliDate();
-        
-        let htmlContent = `
-            <html lang="fa" dir="rtl">
-            <head>
-                <title>لیست سفارش خرید - ${today}</title>
-                <style>
-                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 20px; color: #000; }
-                    h2 { text-align: center; margin-bottom: 5px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-                    .meta { text-align: center; font-size: 12px; margin-bottom: 20px; color: #555; }
-                    table { width: 100%; border-collapse: collapse; font-size: 10px; }
-                    th, td { border: 1px solid #444; padding: 6px; text-align: center; vertical-align: middle; }
-                    th { background-color: #eee; font-weight: bold; }
-                    .ltr { direction: ltr; display: inline-block; font-family: 'Consolas', monospace; font-weight: bold; }
-                    .text-right { text-align: right; }
-                    .empty-col { background-color: #fff; }
-                    @media print { 
-                        body { -webkit-print-color-adjust: exact; }
-                        th { background-color: #eee !important; }
-                    }
-                </style>
-            </head>
-            <body>
-                <h2>لیست سفارش خرید قطعات (کسری انبار)</h2>
-                <div class="meta">تاریخ گزارش: ${today} | تعداد اقلام: ${stats.shortages.length}</div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 5%">#</th>
-                            <th style="width: 12%">کد اختصاصی</th>
-                            <th style="width: 18%">قطعه / مقدار</th>
-                            <th style="width: 10%">پکیج</th>
-                            <th style="width: 20%">مشخصات فنی</th>
-                            <th style="width: 10%">فروشنده قبلی</th>
-                            <th style="width: 8%">موجودی</th>
-                            <th style="width: 17%">تعداد خرید (دستی)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-
-        stats.shortages.forEach((item, index) => {
-            // ترکیب مشخصات فنی در یک رشته برای چاپ
-            const specs = [
-                item.type,
-                item.watt ? item.watt : null,
-                item.tolerance ? item.tolerance : null,
-                item.tech ? item.tech : null
-            ].filter(Boolean).join(' | ');
-
-            const pCode = getPartCodeInv(item, config);
-
-            htmlContent += `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td><span class="ltr">${pCode}</span></td>
-                    <td class="text-right"><span class="ltr">${item.val}</span></td>
-                    <td><span class="ltr">${item.pkg || '-'}</span></td>
-                    <td class="text-right">${specs}</td>
-                    <td>${item.vendor || '-'}</td>
-                    <td>${item.qty}</td>
-                    <td class="empty-col"></td>
-                </tr>
-            `;
-        });
-
-        htmlContent += `</tbody></table><script>window.onload=function(){setTimeout(()=>window.print(),500);}</script></body></html>`;
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-    };
+    const { formatDecimal, formatInteger, getPartCodeInv, toShamsi } = helpers;
 
     // ------------------------------------------------------------------------------------------------
     // [تگ: حالت بارگذاری]
-    // نمایش اسپینر در زمانی که داده‌ها هنوز از سرور دریافت نشده‌اند.
     // ------------------------------------------------------------------------------------------------
     if (loading) {
         return (
@@ -241,25 +96,7 @@ const InventoryPage = () => {
     if (!stats) return null;
 
     // ------------------------------------------------------------------------------------------------
-    // [تگ: محاسبات آماری سمت کلاینت]
-    // محاسبه متغیرهای کمکی برای نمایش در داشبورد (مثل امتیاز سلامت و بیشترین دسته‌بندی).
-    // ------------------------------------------------------------------------------------------------
-    const totalItems = stats.total_items || 0;
-    const totalQty = stats.total_quantity || 0;
-    const totalCategories = Object.keys(stats.categories).length;
-    // محاسبه امتیاز سلامت: نسبت قطعات موجود به کل قطعات (هرچه کسری کمتر، امتیاز بالاتر)
-    const healthScore = totalItems > 0 ? Math.round(((totalItems - stats.shortages.length) / totalItems) * 100) : 100;
-    
-    // پیدا کردن دسته‌ای که بیشترین ارزش ریالی را دارد
-    const maxCategoryVal = Math.max(...Object.values(stats.categories).map(c => c.value)) || 1;
-    let topCategory = "---";
-    Object.entries(stats.categories).forEach(([name, data]) => { if (data.value === maxCategoryVal) topCategory = name; });
-    
-    const avgPrice = totalQty > 0 ? (stats.total_value_toman / totalQty) : 0;
-
-    // ------------------------------------------------------------------------------------------------
     // [تگ: رندر رابط کاربری]
-    // نمایش تب‌ها، کارت‌ها و جداول بر اساس تب انتخاب شده.
     // ------------------------------------------------------------------------------------------------
     return (
         <div className="flex-1 p-6 overflow-y-auto custom-scroll h-full">
