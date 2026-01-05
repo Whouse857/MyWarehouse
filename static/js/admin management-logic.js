@@ -1,5 +1,5 @@
 // ====================================================================================================
-// نسخه: 0.20
+// نسخه: 0.23
 // فایل: admin_management_logic.js
 // تهیه کننده: ------
 //
@@ -51,9 +51,14 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
     const [selectedType, setSelectedType] = useState(null);
     const [config, setConfig] = useState(globalConfig || {});
     const [newItems, setNewItems] = useState({});
+    
+    // مدیریت مودال‌ها و مقادیر ورودی
     const [renameModal, setRenameModal] = useState({ open: false, type: '', oldVal: '', category: '', listName: '' });
     const [addCategoryModal, setAddCategoryModal] = useState(false);
-    
+    const [deleteCategoryModal, setDeleteCategoryModal] = useState({ open: false, key: '' });
+    const [deleteItemModal, setDeleteItemModal] = useState({ open: false, listName: '', value: '' }); // جدید: مودال حذف آیتم
+    const [inputValue, setInputValue] = useState('');
+
     // رفرنس‌ها برای مدیریت Drag & Drop
     const dragItem = useRef();
     const dragOverItem = useRef();
@@ -86,11 +91,59 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
     }
 
     // ------------------------------------------------------------------------------------------------
+    // [تگ: توابع باز کردن مودال‌ها]
+    // این توابع مقدار اولیه ورودی را تنظیم می‌کنند تا کنترل شده باشد
+    // ------------------------------------------------------------------------------------------------
+    const openRenameModal = (type, oldVal, category, listName = '') => {
+        setInputValue(oldVal);
+        setRenameModal({ open: true, type, oldVal, category, listName });
+    };
+
+    const openAddCategoryModal = () => {
+        setInputValue('');
+        setAddCategoryModal(true);
+    };
+
+    const openDeleteCategoryModal = (key) => {
+        if (key === 'General') return notify.show('خطا', 'حذف تنظیمات عمومی مجاز نیست.', 'error');
+        setDeleteCategoryModal({ open: true, key });
+    };
+
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: مدیریت کلیدهای میانبر (Esc و Enter)]
+    // شنود رویداد کیبورد برای بستن مودال‌ها یا تایید عملیات
+    // ------------------------------------------------------------------------------------------------
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // بستن تمام مودال‌ها با ESC
+            if (e.key === 'Escape') {
+                setRenameModal(prev => ({ ...prev, open: false }));
+                setAddCategoryModal(false);
+                setDeleteCategoryModal({ open: false, key: '' });
+                setDeleteItemModal({ open: false, listName: '', value: '' }); // جدید
+            }
+            // تایید عملیات با Enter
+            if (e.key === 'Enter') {
+                if (renameModal.open) {
+                    handleRenameSubmit(inputValue);
+                } else if (addCategoryModal) {
+                    handleAddCategorySubmit(inputValue);
+                } else if (deleteCategoryModal.open) {
+                    confirmDeleteCategory();
+                } else if (deleteItemModal.open) { // جدید
+                    confirmDeleteItem();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [renameModal.open, addCategoryModal, deleteCategoryModal.open, deleteItemModal.open, inputValue]); 
+
+    // ------------------------------------------------------------------------------------------------
     // [تگ: منطق Drag & Drop دسته‌ها]
     // ------------------------------------------------------------------------------------------------
     const handleDragStart = (e, position) => { 
         dragItem.current = position; 
-        // استفاده از کلاس CSS به جای استایل مستقیم
         e.target.classList.add('drag-category-active'); 
     };
 
@@ -105,12 +158,10 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
     };
 
     const handleDragEnd = (e) => { 
-        // حذف کلاس CSS مربوط به درگ
         e.target.classList.remove('drag-category-active'); 
         dragItem.current = null; 
         dragOverItem.current = null; 
         
-        // بروزرسانی اولویت‌ها
         const newConfig = { ...config }; 
         sortedKeys.forEach((key, index) => { 
             if (newConfig[key]) newConfig[key].priority = sortedKeys.length - index; 
@@ -122,7 +173,6 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
     // [تگ: تغییر تنظیمات فیلد]
     // ------------------------------------------------------------------------------------------------
     const handleFieldConfigChange = (listName, key, value) => {
-        // اعتبارسنجی: جلوگیری از فعال کردن لیست‌های خالی
         if ((key === 'visible' && value === true) || (key === 'required' && value === true)) {
             const currentList = config[selectedType][listName] || [];
             if (currentList.length === 0) {
@@ -142,7 +192,6 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         
         newConfig[selectedType].fields[listName][key] = value;
 
-        // وابستگی‌های هوشمند (الزامی -> نمایش، مخفی -> غیرالزامی)
         if (key === 'required' && value === true) {
              newConfig[selectedType].fields[listName]['visible'] = true;
         }
@@ -168,10 +217,20 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         }
     };
     
+    // باز کردن مودال تایید برای حذف آیتم
     const handleDeleteItem = (listName, value) => { 
+        setDeleteItemModal({ open: true, listName, value });
+    };
+
+    // انجام عملیات حذف آیتم پس از تایید
+    const confirmDeleteItem = () => {
+        const { listName, value } = deleteItemModal;
+        if (!value) return;
+
         const newConfig = { ...config }; 
         newConfig[selectedType][listName] = newConfig[selectedType][listName].filter(item => item !== value); 
         setConfig(newConfig); 
+        setDeleteItemModal({ open: false, listName: '', value: '' });
     };
 
     // ------------------------------------------------------------------------------------------------
@@ -179,7 +238,6 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
     // ------------------------------------------------------------------------------------------------
     const handleItemDragStart = (e, index) => {
         dragItemIdx.current = index;
-        // استفاده از کلاس CSS به جای استایل مستقیم
         e.target.classList.add('drag-item-active');
     };
 
@@ -200,14 +258,13 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
     };
 
     const handleItemDragEnd = (e) => {
-        // حذف کلاس CSS مربوط به درگ
         e.target.classList.remove('drag-item-active');
         dragItemIdx.current = null;
         dragOverItemIdx.current = null;
     };
 
     // ------------------------------------------------------------------------------------------------
-    // [تگ: عملیات ذخیره‌سازی و حذف]
+    // [تگ: عملیات ذخیره‌سازی]
     // ------------------------------------------------------------------------------------------------
     const handleSave = async () => {
         if (await dialog.ask("ذخیره تنظیمات", "آیا از ذخیره تغییرات اطمینان دارید؟", "warning")) {
@@ -223,23 +280,28 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         }
     };
 
-    const handleDeleteCategory = async (keyToDelete) => {
-        if (keyToDelete === 'General') return notify.show('خطا', 'حذف تنظیمات عمومی مجاز نیست.', 'error');
-        if (await dialog.ask("حذف دسته", `آیا از حذف دسته‌بندی "${config[keyToDelete].label}" اطمینان دارید؟`, "danger")) {
-            try {
-                const newConfig = { ...config }; 
-                delete newConfig[keyToDelete];
-                
-                const { ok } = await fetchAPI('/settings/config', { method: 'POST', body: newConfig });
-                if (ok) { 
-                    setConfig(newConfig); 
-                    setSortedKeys(sortedKeys.filter(k => k !== keyToDelete)); 
-                    if (selectedType === keyToDelete) setSelectedType(sortedKeys[0]); 
-                    onConfigUpdate(newConfig); 
-                    notify.show('موفقیت', 'حذف شد.', 'success'); 
-                }
-            } catch (e) { notify.show('خطا', 'مشکل سرور', 'error'); }
-        }
+    const handleDeleteCategory = (key) => {
+        openDeleteCategoryModal(key);
+    };
+
+    const confirmDeleteCategory = async () => {
+        const keyToDelete = deleteCategoryModal.key;
+        if (!keyToDelete) return;
+
+        try {
+            const newConfig = { ...config }; 
+            delete newConfig[keyToDelete];
+            
+            const { ok } = await fetchAPI('/settings/config', { method: 'POST', body: newConfig });
+            if (ok) { 
+                setConfig(newConfig); 
+                setSortedKeys(sortedKeys.filter(k => k !== keyToDelete)); 
+                if (selectedType === keyToDelete) setSelectedType(sortedKeys[0]); 
+                onConfigUpdate(newConfig); 
+                notify.show('موفقیت', 'حذف شد.', 'success'); 
+            }
+        } catch (e) { notify.show('خطا', 'مشکل سرور', 'error'); }
+        setDeleteCategoryModal({ open: false, key: '' });
     };
 
     // ------------------------------------------------------------------------------------------------
@@ -313,7 +375,6 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         setAddCategoryModal(false);
     };
     
-    // محاسبه لیست‌های قابل نمایش
     const listKeys = selectedType ? Object.keys(listLabels).filter(key => (selectedType === 'General' ? key === 'locations' : key !== 'locations')) : [];
 
     const handlePrefixChange = (val) => {
@@ -335,14 +396,19 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         newItems,
         renameModal,
         addCategoryModal,
-        listLabels, // دیتای ثابت
-        listKeys,   // دیتای محاسبه شده
+        deleteCategoryModal,
+        deleteItemModal, // اضافه شده
+        inputValue,
+        listLabels,
+        listKeys,
 
         // توابع تغییر وضعیت (Setters)
         setSelectedType,
         setRenameModal,
         setAddCategoryModal,
         setNewItems,
+        setInputValue,
+        setDeleteItemModal, // اضافه شده
 
         // توابع هندلر (Handlers)
         handleDragStart,
@@ -358,6 +424,10 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         handleDeleteCategory,
         handleRenameSubmit,
         handleAddCategorySubmit,
-        handlePrefixChange
+        handlePrefixChange,
+        openRenameModal,
+        openAddCategoryModal,
+        confirmDeleteCategory,
+        confirmDeleteItem // اضافه شده
     };
 };

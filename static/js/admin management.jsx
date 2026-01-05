@@ -1,12 +1,67 @@
 // ====================================================================================================
-// نسخه: 0.20
+// نسخه: 0.23
 // فایل: admin management.jsx
 // توضیح: این فایل مسئول نمایش ظاهر (JSX) است و منطق را از هوک دریافت می‌کند.
-// نکته: پسوند این فایل به jsx تغییر یافته تا نشان‌دهنده ماهیت React آن باشد.
+// نکته: در این نسخه کامپوننت‌های مودال به صورت داخلی تعریف شده‌اند تا کنترل کامل روی کیبورد داشته باشیم.
 // ====================================================================================================
 
 // اطمینان از دسترسی به React برای پردازش JSX
 const React = window.React;
+
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت‌های کمکی داخلی]
+// تعریف مودال‌ها در همین فایل برای تضمین ظاهر و عملکرد صحیح کلیدهای میانبر
+// ----------------------------------------------------------------------------------------------------
+const CustomModal = ({ isOpen, onClose, onConfirm, title, label, value, onChange, placeholder }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="glass-panel w-full max-w-sm p-6 rounded-2xl border border-white/10 shadow-2xl animate-zoom-in" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold text-white">{title}</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-gray-400 mb-2">{label}</label>
+                    <input 
+                        autoFocus
+                        className="nexus-input w-full px-4 py-2 text-sm rounded-xl bg-black/30 border-white/10 text-white focus:border-nexus-primary"
+                        value={value}
+                        onChange={(e) => onChange(e.target.value)}
+                        placeholder={placeholder}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') onConfirm(value);
+                            if (e.key === 'Escape') onClose();
+                        }}
+                    />
+                </div>
+                <div className="flex gap-3">
+                    <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-white/5 text-gray-400 hover:bg-white/10 text-sm font-bold transition">انصراف</button>
+                    <button onClick={() => onConfirm(value)} className="flex-1 py-2 rounded-xl bg-nexus-primary text-white hover:bg-indigo-600 text-sm font-bold transition shadow-lg">تایید</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="glass-panel w-full max-w-sm p-6 rounded-2xl border border-white/10 shadow-2xl animate-zoom-in" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3 mb-4 text-red-400">
+                    <div className="bg-red-500/10 p-2 rounded-full"><i data-lucide="alert-triangle" className="w-6 h-6"></i></div>
+                    <h3 className="text-lg font-bold text-white">{title}</h3>
+                </div>
+                <p className="text-sm text-gray-300 mb-6 leading-relaxed">{message}</p>
+                <div className="flex gap-3">
+                    <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-white/5 text-gray-400 hover:bg-white/10 text-sm font-bold transition">انصراف</button>
+                    <button onClick={onConfirm} className="flex-1 py-2 rounded-xl bg-red-500/80 text-white hover:bg-red-600 text-sm font-bold transition shadow-lg">حذف شود</button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     // ------------------------------------------------------------------------------------------------
@@ -14,12 +69,18 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     // فراخوانی هوک منطق برای دریافت داده‌ها و توابع مورد نیاز
     // ------------------------------------------------------------------------------------------------
     const {
-        sortedKeys, selectedType, config, newItems, renameModal, addCategoryModal, listLabels, listKeys,
-        setSelectedType, setRenameModal, setAddCategoryModal, setNewItems,
+        sortedKeys, selectedType, config, newItems, listLabels, listKeys,
+        // مودال‌ها و مقادیر
+        renameModal, addCategoryModal, deleteCategoryModal, inputValue,
+        deleteItemModal, // اضافه شده
+        // توابع
+        setSelectedType, setNewItems, setInputValue,
         handleDragStart, handleDragEnter, handleDragEnd,
         handleFieldConfigChange, handleAddItem, handleDeleteItem,
         handleItemDragStart, handleItemDragEnter, handleItemDragEnd,
-        handleSave, handleDeleteCategory, handleRenameSubmit, handleAddCategorySubmit, handlePrefixChange
+        handleSave, handleDeleteCategory, handleRenameSubmit, handleAddCategorySubmit, handlePrefixChange,
+        openRenameModal, openAddCategoryModal, confirmDeleteCategory, confirmDeleteItem,
+        setRenameModal, setAddCategoryModal, setDeleteCategoryModal, setDeleteItemModal // برای بستن دستی
     } = window.useAdminManagementLogic({ globalConfig, onConfigUpdate });
 
     // ------------------------------------------------------------------------------------------------
@@ -27,9 +88,44 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     // ------------------------------------------------------------------------------------------------
     return (
         <div className="flex-1 p-6 overflow-hidden h-full flex flex-col">
-            {/* مودال‌های پاپ‌آپ برای تغییر نام و افزودن دسته */}
-            <InputModal isOpen={renameModal.open} onClose={() => setRenameModal({ ...renameModal, open: false })} onConfirm={handleRenameSubmit} title="تغییر نام" label="نام جدید:" initialValue={renameModal.oldVal} />
-            <InputModal isOpen={addCategoryModal} onClose={() => setAddCategoryModal(false)} onConfirm={handleAddCategorySubmit} title="افزودن دسته" label="نام انگلیسی:" initialValue="" />
+            {/* مودال‌های پاپ‌آپ اصلاح شده با قابلیت پشتیبانی از Enter/Esc */}
+            <CustomModal 
+                isOpen={renameModal.open} 
+                onClose={() => setRenameModal({ ...renameModal, open: false })} 
+                onConfirm={handleRenameSubmit} 
+                title="تغییر نام" 
+                label="نام جدید:" 
+                value={inputValue} 
+                onChange={setInputValue} 
+            />
+            
+            <CustomModal 
+                isOpen={addCategoryModal} 
+                onClose={() => setAddCategoryModal(false)} 
+                onConfirm={handleAddCategorySubmit} 
+                title="افزودن دسته" 
+                label="نام انگلیسی:" 
+                value={inputValue} 
+                onChange={setInputValue} 
+                placeholder="ExampleCategory"
+            />
+
+            <ConfirmModal
+                isOpen={deleteCategoryModal.open}
+                onClose={() => setDeleteCategoryModal({ open: false, key: '' })}
+                onConfirm={confirmDeleteCategory}
+                title="حذف دسته‌بندی"
+                message={`آیا از حذف دسته‌بندی "${deleteCategoryModal.key ? config[deleteCategoryModal.key]?.label : ''}" و تمام محتویات آن اطمینان دارید؟ این عملیات قابل بازگشت نیست.`}
+            />
+
+            {/* مودال جدید برای حذف آیتم با توضیحات دقیق */}
+            <ConfirmModal
+                isOpen={deleteItemModal.open}
+                onClose={() => setDeleteItemModal({ ...deleteItemModal, open: false })}
+                onConfirm={confirmDeleteItem}
+                title="حذف آیتم"
+                message={`آیا از حذف آیتم «${deleteItemModal.value}» از لیست «${listLabels[deleteItemModal.listName]?.label || deleteItemModal.listName}» مربوط به دسته «${config[selectedType]?.label}» اطمینان دارید؟`}
+            />
             
             {/* هدر صفحه */}
             <header className="h-16 flex justify-between items-center shrink-0">
@@ -42,12 +138,12 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
                 {/* [تگ: سایدبار دسته‌ها]                                                            */}
                 {/* ---------------------------------------------------------------------------------- */}
                 <div className="col-span-12 md:col-span-4 lg:col-span-3 glass-panel rounded-2xl border border-white/10 flex flex-col overflow-hidden">
-                    <div className="p-4 bg-white/5 border-b border-white/5 flex justify-between items-center"><span className="text-sm font-bold text-gray-300">ترتیب دسته‌ها</span><button onClick={() => setAddCategoryModal(true)} className="text-xs bg-nexus-primary hover:bg-indigo-600 text-white px-2 py-1 rounded transition flex items-center gap-1"><i data-lucide="plus" className="w-3 h-3"></i> افزودن</button></div>
+                    <div className="p-4 bg-white/5 border-b border-white/5 flex justify-between items-center"><span className="text-sm font-bold text-gray-300">ترتیب دسته‌ها</span><button onClick={openAddCategoryModal} className="text-xs bg-nexus-primary hover:bg-indigo-600 text-white px-2 py-1 rounded transition flex items-center gap-1"><i data-lucide="plus" className="w-3 h-3"></i> افزودن</button></div>
                     <div className="flex-1 overflow-y-auto custom-scroll p-2 space-y-1.5">
                         {sortedKeys.map((key, index) => (
                             <div key={key} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onClick={() => setSelectedType(key)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${selectedType === key ? 'bg-nexus-primary/20 border-nexus-primary text-white' : 'bg-white/5 border-transparent text-gray-400 hover:bg-white/10'}`}>
                                 <div className="flex items-center gap-3"><div className="cursor-grab text-gray-600 hover:text-gray-400 p-1"><i data-lucide="grip-vertical" className="w-4 h-4"></i></div><span className="font-bold text-sm truncate max-w-[120px]">{config[key].label}</span></div>
-                                {key !== 'General' && <div className="flex items-center gap-1"><button onClick={(e) => { e.stopPropagation(); setRenameModal({ open: true, type: 'category', oldVal: key, category: key }); }} className="text-blue-400 p-1.5"><i data-lucide="pencil" className="w-3.5 h-3.5"></i></button><button onClick={(e) => { e.stopPropagation(); handleDeleteCategory(key); }} className="text-red-400 p-1.5"><i data-lucide="trash-2" className="w-3.5 h-3.5"></i></button></div>}
+                                {key !== 'General' && <div className="flex items-center gap-1"><button onClick={(e) => { e.stopPropagation(); openRenameModal('category', key, key); }} className="text-blue-400 p-1.5"><i data-lucide="pencil" className="w-3.5 h-3.5"></i></button><button onClick={(e) => { e.stopPropagation(); handleDeleteCategory(key); }} className="text-red-400 p-1.5"><i data-lucide="trash-2" className="w-3.5 h-3.5"></i></button></div>}
                             </div>
                         ))}
                     </div>
@@ -125,7 +221,13 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
 
                                             {/* بخش افزودن آیتم به لیست */}
                                             <div className="flex gap-2 mb-3">
-                                                <input className="nexus-input flex-1 px-3 py-1.5 text-xs" placeholder="آیتم پیش‌فرض..." value={newItems[listName] || ''} onChange={(e) => setNewItems({...newItems, [listName]: e.target.value})} />
+                                                <input 
+                                                    className="nexus-input flex-1 px-3 py-1.5 text-xs" 
+                                                    placeholder="آیتم پیش‌فرض..." 
+                                                    value={newItems[listName] || ''} 
+                                                    onChange={(e) => setNewItems({...newItems, [listName]: e.target.value})}
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleAddItem(listName, newItems[listName])}
+                                                />
                                                 <button onClick={() => handleAddItem(listName, newItems[listName])} className="bg-nexus-primary hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg"><i data-lucide="plus" className="w-4 h-4"></i></button>
                                             </div>
                                             
@@ -149,7 +251,7 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
 
                                                         <span className="text-xs text-gray-300 font-mono pointer-events-none flex-1">{item}</span>
                                                         <div className="flex gap-1 opacity-50 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-                                                            <button onClick={() => setRenameModal({ open: true, type: 'item', oldVal: item, category: selectedType, listName })} className="text-blue-400 hover:text-blue-300"><i data-lucide="pencil" className="w-3 h-3"></i></button>
+                                                            <button onClick={() => openRenameModal('item', item, selectedType, listName)} className="text-blue-400 hover:text-blue-300"><i data-lucide="pencil" className="w-3 h-3"></i></button>
                                                             <button onClick={() => handleDeleteItem(listName, item)} className="text-red-400 hover:text-red-300"><i data-lucide="trash-2" className="w-3 h-3"></i></button>
                                                         </div>
                                                     </div>
