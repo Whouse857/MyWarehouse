@@ -1,11 +1,12 @@
 /* ====================================================================================================
-نسخه: 0.26
+نسخه: 0.27
 فایل: EntryPage.css
-توضیحات: استایل‌های نوار فیلترهای فعال + سیستم فیلتر پیشرفته چند شرطی (Query Builder).
+تغییرات:
+- اضافه شدن min-height به لیست برای اطمینان از عدم clipping فیلتر.
+- بهبود لایه‌بندی z-index برای پاپ‌آپ‌های فیلتر.
 ====================================================================================================
 */
 
-/* نگهدارنده اصلی صفحه */
 .entry-page-container {
     flex: 1 1 0%;
     display: flex;
@@ -15,7 +16,6 @@
     position: relative;
 }
 
-/* انیمیشن‌ها */
 @keyframes scale-in {
     from { opacity: 0; transform: scale(0.95); }
     to { opacity: 1; transform: scale(1); }
@@ -25,7 +25,6 @@
     animation: scale-in 0.2s ease-out forwards;
 }
 
-/* استایل اسکرول بار سفارشی */
 .custom-scroll::-webkit-scrollbar { width: 6px; }
 .custom-scroll::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.1); }
 .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
@@ -51,19 +50,19 @@
 
 .filter-popup {
     position: absolute;
-    top: 100%;
+    top: calc(100% + 5px);
     right: 0;
-    z-index: 50;
-    width: 300px; /* کمی عریض‌تر برای شرط‌های پیچیده */
-    margin-top: 8px;
-    background: rgba(15, 23, 42, 0.95);
+    z-index: 100; /* افزایش اولویت */
+    width: 300px;
+    background: #0f172a; /* رنگ جامد برای جلوگیری از تداخل با پشت صحنه در صورت خالی بودن */
     backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
     padding: 12px;
     animation: scale-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
 .filter-popup::before {
     content: '';
     position: absolute;
@@ -77,14 +76,13 @@
     transform: rotate(45deg);
 }
 
-/* --- استایل‌های جدید: سیستم فیلتر پیشرفته (Query Builder) --- */
+/* --- سیستم فیلتر پیشرفته --- */
 .condition-row {
     position: relative;
     margin-bottom: 8px;
     animation: scale-in 0.2s;
 }
 
-/* خط اتصال بین شرط‌ها */
 .condition-connector {
     display: flex;
     justify-content: center;
@@ -101,7 +99,6 @@
     z-index: 0;
 }
 
-/* دکمه AND/OR */
 .logic-btn {
     position: relative;
     z-index: 1;
@@ -114,12 +111,12 @@
     border: 1px solid;
 }
 .logic-btn.and {
-    background: rgba(16, 185, 129, 0.1); /* Emerald tint */
+    background: rgba(16, 185, 129, 0.1);
     border-color: rgba(16, 185, 129, 0.3);
     color: #34d399;
 }
 .logic-btn.or {
-    background: rgba(245, 158, 11, 0.1); /* Amber tint */
+    background: rgba(245, 158, 11, 0.1);
     border-color: rgba(245, 158, 11, 0.3);
     color: #fbbf24;
 }
@@ -128,7 +125,6 @@
     filter: brightness(1.2);
 }
 
-/* دکمه حذف سطر */
 .remove-condition-btn {
     position: absolute;
     left: 8px;
@@ -136,12 +132,12 @@
     transform: translateY(-50%);
     color: rgba(255, 255, 255, 0.3);
     transition: color 0.2s;
+    z-index: 10;
 }
 .remove-condition-btn:hover {
     color: #ef4444;
 }
 
-/* دکمه افزودن شرط جدید */
 .add-condition-btn {
     width: 100%;
     padding: 8px;
@@ -162,7 +158,7 @@
     color: white;
 }
 
-/* --- استایل‌های چیپ‌های فیلتر فعال (Active Chips) --- */
+/* --- استایل‌های چیپ‌های فیلتر فعال --- */
 .active-filters-bar {
     display: flex;
     flex-wrap: wrap;

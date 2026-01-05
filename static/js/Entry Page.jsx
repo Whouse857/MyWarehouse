@@ -1,9 +1,9 @@
 // ====================================================================================================
-// نسخه: 0.26
+// نسخه: 0.27
 // فایل: EntryPage.jsx
-// توضیحات: فایل نمایش اصلاح شده.
-// - جایگزینی فیلترهای قدیمی با سیستم Query Builder در پاپ‌آپ مشخصات.
-// - نمایش نوار فیلترهای فعال به صورت چیپ‌های هوشمند.
+// تغییرات: 
+// - اضافه شدن حالت Empty State برای جلوگیری از بریده شدن پاپ‌آپ فیلتر در زمان نبود نتیجه.
+// - بهینه‌سازی z-index و دسترسی‌های فیلتر.
 // ====================================================================================================
 
 const { useState, useEffect, useRef } = React;
@@ -29,10 +29,9 @@ const FilterPopup = ({ title, children, onClear, width }) => {
 // ----------------------------------------------------------------------------------------------------
 // [تگ: نوار فیلترهای فعال]
 // ----------------------------------------------------------------------------------------------------
-const ActiveFiltersBar = ({ codeFilter, specConditions, onClearCode, onRemoveSpec, setCodeFilter }) => {
-    // بررسی اینکه آیا فیلتری فعال است؟
-    const hasCode = codeFilter.trim() !== '';
-    const activeSpecs = specConditions.filter(c => c.value.trim() !== '');
+const ActiveFiltersBar = ({ codeFilter, specConditions, onClearCode, onRemoveSpec }) => {
+    const hasCode = codeFilter && codeFilter.trim() !== '';
+    const activeSpecs = specConditions.filter(c => c.value && c.value.trim() !== '');
 
     if (!hasCode && activeSpecs.length === 0) return null;
 
@@ -61,7 +60,7 @@ const ActiveFiltersBar = ({ codeFilter, specConditions, onClearCode, onRemoveSpe
 };
 
 // ----------------------------------------------------------------------------------------------------
-// [تگ: مودال خلاصه] (بدون تغییر)
+// [تگ: مودال خلاصه]
 // ----------------------------------------------------------------------------------------------------
 const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     if (!isOpen) return null;
@@ -201,7 +200,7 @@ const EntryPage = (props) => {
                         
                         {/* --- ستون لیست قطعات --- */}
                         <div className="col-span-12 lg:col-span-8 flex flex-col order-2 lg:order-1">
-                            <div className="glass-panel rounded-2xl flex flex-col relative">
+                            <div className="glass-panel rounded-2xl flex flex-col relative min-h-[450px]">
                                 
                                 {/* نوار فیلترهای فعال */}
                                 <ActiveFiltersBar 
@@ -209,7 +208,6 @@ const EntryPage = (props) => {
                                     specConditions={specConditions} 
                                     onClearCode={() => clearFilterGroup('code')}
                                     onRemoveSpec={removeSpecCondition}
-                                    setCodeFilter={setCodeFilter}
                                 />
 
                                 {/* هدر لیست */}
@@ -235,7 +233,7 @@ const EntryPage = (props) => {
                                     <div className="col-span-5 text-right flex items-center gap-2 relative">
                                         <span>مشخصات فنی</span>
                                         <div 
-                                            className={`filter-icon-btn ${activeFilterPopup === 'specs' ? 'active' : ''} ${specConditions.some(c => c.value) ? 'has-value' : ''}`}
+                                            className={`filter-icon-btn ${activeFilterPopup === 'specs' ? 'active' : ''} ${specConditions.some(c => c.value && c.value.trim() !== '') ? 'has-value' : ''}`}
                                             onClick={(e) => { e.stopPropagation(); toggleFilterPopup('specs'); }}
                                         >
                                             <i data-lucide="filter" className="w-3.5 h-3.5"></i>
@@ -266,7 +264,7 @@ const EntryPage = (props) => {
                                                                 placeholder={index === 0 ? "مثلاً: 100k 0805" : "شرط بعدی..."}
                                                                 value={cond.value} 
                                                                 onChange={e => updateSpecCondition(cond.id, e.target.value)}
-                                                                autoFocus={index === specConditions.length - 1} // فوکوس روی آخرین کادر اضافه شده
+                                                                autoFocus={index === specConditions.length - 1} 
                                                             />
                                                             
                                                             {/* دکمه حذف سطر (اگر بیشتر از یکی باشد) */}
@@ -302,39 +300,49 @@ const EntryPage = (props) => {
                                 </div>
                                 
                                 {/* بدنه لیست */}
-                                <div className="p-2 space-y-2">
-                                    {filteredParts.map(p => {
-                                        const pCode = getPartCode(p, globalConfig);
-                                        return (
-                                            <div key={p.id} className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg border border-transparent hover:border-white/10 hover:bg-white/5 transition-all ${formData.id === p.id ? 'bg-nexus-primary/10 !border-nexus-primary/50' : ''}`}>
-                                                <div className="col-span-2 text-right text-nexus-accent font-mono text-[14px] font-bold tracking-tighter">{pCode}</div>
-                                                <div className="col-span-5 text-right flex flex-col justify-center gap-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-white text-lg font-black ltr font-sans tracking-wide">{p.val}</span>
-                                                        <span className="text-xs text-nexus-accent font-bold px-1.5 py-0.5 bg-nexus-accent/10 rounded">{p.package}</span>
+                                <div className="p-2 space-y-2 flex-1">
+                                    {filteredParts.length > 0 ? (
+                                        filteredParts.map(p => {
+                                            const pCode = getPartCode(p, globalConfig);
+                                            return (
+                                                <div key={p.id} className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg border border-transparent hover:border-white/10 hover:bg-white/5 transition-all ${formData.id === p.id ? 'bg-nexus-primary/10 !border-nexus-primary/50' : ''}`}>
+                                                    <div className="col-span-2 text-right text-nexus-accent font-mono text-[14px] font-bold tracking-tighter">{pCode}</div>
+                                                    <div className="col-span-5 text-right flex flex-col justify-center gap-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-white text-lg font-black ltr font-sans tracking-wide">{p.val}</span>
+                                                            <span className="text-xs text-nexus-accent font-bold px-1.5 py-0.5 bg-nexus-accent/10 rounded">{p.package}</span>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2 text-[10px] text-gray-400 items-center">
+                                                            {p.type && <span className="text-blue-300 font-bold">{p.type}</span>}
+                                                            {p.watt && <span className="flex items-center gap-1"><i data-lucide="zap" className="w-3 h-3 text-yellow-500"></i>{p.watt}</span>}
+                                                            {p.tolerance && <span className="text-purple-400 font-bold">{p.tolerance}</span>}
+                                                            {p.tech && <span className="text-gray-500 border-x border-gray-700 px-2">{p.tech}</span>}
+                                                            {p.storage_location && <span className="flex items-center gap-1 text-orange-300 bg-orange-500/10 px-1 rounded border border-orange-500/20"><i data-lucide="map-pin" className="w-3 h-3"></i>{p.storage_location}</span>}
+                                                        </div>
                                                     </div>
-                                                    <div className="flex flex-wrap gap-2 text-[10px] text-gray-400 items-center">
-                                                        {p.type && <span className="text-blue-300 font-bold">{p.type}</span>}
-                                                        {p.watt && <span className="flex items-center gap-1"><i data-lucide="zap" className="w-3 h-3 text-yellow-500"></i>{p.watt}</span>}
-                                                        {p.tolerance && <span className="text-purple-400 font-bold">{p.tolerance}</span>}
-                                                        {p.tech && <span className="text-gray-500 border-x border-gray-700 px-2">{p.tech}</span>}
-                                                        {p.storage_location && <span className="flex items-center gap-1 text-orange-300 bg-orange-500/10 px-1 rounded border border-orange-500/20"><i data-lucide="map-pin" className="w-3 h-3"></i>{p.storage_location}</span>}
+                                                    <div className="col-span-1 text-center"><span className={`px-2 py-0.5 rounded text-xs font-bold ${p.quantity < p.min_quantity ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.quantity}</span></div>
+                                                    <div className="col-span-2 text-center text-xs text-amber-400 ltr font-mono">{(p.toman_price||0).toLocaleString()}</div>
+                                                    <div className="col-span-2 flex justify-center gap-3">
+                                                        <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }} disabled={!serverStatus} title="ویرایش" className="w-9 h-9 rounded-full bg-nexus-primary/20 text-nexus-primary hover:bg-nexus-primary hover:text-white flex items-center justify-center transition-all shadow-lg hover:shadow-primary/50 disabled:opacity-30 disabled:cursor-not-allowed"><i data-lucide="pencil" className="w-5 h-5"></i></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} disabled={!serverStatus} title="حذف" className="w-9 h-9 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
                                                     </div>
                                                 </div>
-                                                <div className="col-span-1 text-center"><span className={`px-2 py-0.5 rounded text-xs font-bold ${p.quantity < p.min_quantity ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{p.quantity}</span></div>
-                                                <div className="col-span-2 text-center text-xs text-amber-400 ltr font-mono">{(p.toman_price||0).toLocaleString()}</div>
-                                                <div className="col-span-2 flex justify-center gap-3">
-                                                    <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }} disabled={!serverStatus} title="ویرایش" className="w-9 h-9 rounded-full bg-nexus-primary/20 text-nexus-primary hover:bg-nexus-primary hover:text-white flex items-center justify-center transition-all shadow-lg hover:shadow-primary/50 disabled:opacity-30 disabled:cursor-not-allowed"><i data-lucide="pencil" className="w-5 h-5"></i></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} disabled={!serverStatus} title="حذف" className="w-9 h-9 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
-                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-20 text-gray-500 gap-4 opacity-40 animate-in fade-in zoom-in-95">
+                                            <i data-lucide="search-x" className="w-16 h-16"></i>
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-sm font-bold">نتیجه‌ای یافت نشد</span>
+                                                <span className="text-[10px]">شرط‌های جستجو را تغییر دهید</span>
                                             </div>
-                                        );
-                                    })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
 
-                        {/* --- ستون فرم ورود (بدون تغییر) --- */}
+                        {/* --- ستون فرم ورود --- */}
                         <div className="col-span-12 lg:col-span-4 h-full order-1 lg:order-2">
                             <div className="glass-panel border-white/10 rounded-2xl p-5 h-full flex flex-col shadow-2xl relative">
                                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-nexus-primary to-purple-600"></div>

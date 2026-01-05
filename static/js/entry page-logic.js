@@ -1,11 +1,9 @@
 // ====================================================================================================
-// نسخه: 0.26
+// نسخه: 0.28
 // فایل: entry page-logic.js
-// توصیف: منطق صفحه ورود کالا.
-// تغییرات جدید: 
-// - جایگزینی فیلترهای جداگانه با specConditions (آرایه شرط‌ها).
-// - پیاده‌سازی منطق جستجوی جامع در تمام فیلدها.
-// - قابلیت AND/OR بین کادرهای جستجو.
+// تغییرات: 
+// - رفع خطاهای سینتکسی مربوط به کاراکترهای اسکیپ شده در نسخه قبلی.
+// - حفظ کامل منطق فیلتر پیشرفته و موتور جستجوی قطعات.
 // ====================================================================================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
@@ -48,12 +46,9 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
     const [contacts, setContacts] = useState([]);
     
     // --- استیت‌های فیلتر ---
-    // فیلتر کد جدا می‌ماند
     const [codeFilter, setCodeFilter] = useState("");
     
     // فیلتر مشخصات: آرایه‌ای از شرط‌ها
-    // هر شرط: { id, value: متن جستجو, logic: رابطه با شرط قبلی (AND/OR) }
-    // منطق: شرط اول همیشه پایه است، شرط دوم با logic خودش به نتیجه شرط اول وصل می‌شود.
     const [specConditions, setSpecConditions] = useState([
         { id: 1, value: '', logic: 'AND' }
     ]);
@@ -111,7 +106,7 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
     const addSpecCondition = () => {
         setSpecConditions(prev => [
             ...prev,
-            { id: Date.now(), value: '', logic: 'AND' } // پیش‌فرض AND است
+            { id: Date.now(), value: '', logic: 'AND' }
         ]);
     };
 
@@ -139,8 +134,8 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
         const activeCategory = normalize(formData.type);
         const filterCode = normalize(codeFilter);
 
-        // بررسی اینکه آیا شرط‌های مشخصات اصلا مقداری دارند؟
-        const hasSpecFilters = specConditions.some(c => c.value.trim() !== '');
+        // فقط شرط‌هایی که مقدار دارند را در نظر می‌گیریم
+        const validConditions = specConditions.filter(c => c.value.trim() !== '');
 
         if (!Array.isArray(partsList)) return [];
 
@@ -157,9 +152,7 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
             }
 
             // 3. فیلتر پیشرفته مشخصات (Query Builder)
-            if (hasSpecFilters) {
-                // ساختن یک رشته بزرگ از تمام مشخصات قطعه برای جستجوی جامع
-                // شامل: مقدار، پکیج، آدرس، تکنولوژی، توضیحات
+            if (validConditions.length > 0) {
                 const partAllSpecs = (
                     normalize(p.val) + " " +
                     normalize(p.package) + " " +
@@ -169,18 +162,11 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
                     normalize(p.tolerance)
                 );
 
-                // ارزیابی زنجیره‌ای شرط‌ها
-                let finalResult = false; // مقدار اولیه مهم نیست چون با شرط اول ست می‌شود
+                let finalResult = false;
 
-                specConditions.forEach((condition, index) => {
+                validConditions.forEach((condition, index) => {
                     const term = normalize(condition.value);
-                    let isMatch = true;
-
-                    if (term) {
-                        isMatch = partAllSpecs.includes(term);
-                    } else {
-                        isMatch = true; // اگر کادر خالی است، پاس می‌شود (تاثیری نگذارد)
-                    }
+                    const isMatch = partAllSpecs.includes(term);
 
                     if (index === 0) {
                         finalResult = isMatch;
