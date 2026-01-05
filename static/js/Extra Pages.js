@@ -479,9 +479,16 @@ const LogPage = () => {
                 <div className="space-y-6 relative z-10 pb-10">
                     {filteredLogs.length === 0 ? (<div className="text-center text-gray-500 py-20 bg-white/5 rounded-2xl border border-dashed border-white/10"><i data-lucide="search-x" className="w-12 h-12 mx-auto mb-3 opacity-50"></i><p>موردی یافت نشد.</p></div>) : (
                         filteredLogs.map(l => {
-                            const isEntry = l.quantity_added > 0;
+                            // تشخیص دقیق نوع عملیات
+                            const isNew = l.operation_type === 'ENTRY (New)'; 
                             const isDelete = l.operation_type && l.operation_type.includes('DELETE');
-                            const isEdit = l.operation_type && l.operation_type.includes('UPDATE');
+
+                            // ورود: اگر موجودی اضافه شده یا "ثبت اولیه" است (حتی با تعداد صفر) -> سبز شود
+                            const isEntry = l.quantity_added > 0 || isNew;
+                            
+                            // ویرایش: فقط و فقط زمانی که تغییر موجودی "صفر" باشد (و حذف یا ثبت اولیه هم نباشد) -> زرد شود
+                            // با این شرط، اگر موجودی کم شود (عدد منفی)، چون صفر نیست، سیستم آن را "خروج" (قرمز) در نظر می‌گیرد
+                            const isEdit = !isNew && !isDelete && l.quantity_added === 0;
                             
                             // متغیرهای استایل
                             let colorClass = '', iconName = '', borderColor = '', bgClass = '', titleText = '';
