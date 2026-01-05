@@ -6,25 +6,40 @@
 // توضیحات کلی ماژول:
 // این فایل فقط شامل کدهای JSX و رابط کاربری صفحه لاگ است.
 // تمام منطق از طریق هوک useLogLogic دریافت می‌شود.
+// کامپوننت‌های EditLogModal و PersianDatePicker نیز به اینجا منتقل شده‌اند تا ماژول کامل باشد.
 // ====================================================================================================
 
 const { useState, useEffect, useRef } = React;
 
 // ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت‌های کمکی UI]
-// این کامپوننت‌ها مخصوص این صفحه هستند و در همین فایل باقی می‌مانند
+// [تگ: توابع کمکی داخلی UI]
+// این توابع برای کامپوننت‌های UI داخلی (مثل DatePicker) نیاز هستند.
+// ما این‌ها را اینجا هم نگه می‌داریم تا UI کاملاً مستقل کار کند.
 // ----------------------------------------------------------------------------------------------------
+const toEnglishDigitsUI = (str) => {
+    if (!str) return str;
+    return String(str).replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/\//g, '/');
+};
 
+const toPersianDigitsUI = (str) => {
+    if (!str) return str;
+    return String(str).replace(/[0-9]/g, d => "۰۱۲۳۴۵۶۷۸۹"[d]);
+};
+
+// ----------------------------------------------------------------------------------------------------
+// [تگ: مودال ویرایش لاگ]
+// کامپوننت EditLogModal که قبلاً در Extra Pages بود.
+// ----------------------------------------------------------------------------------------------------
 const EditLogModal = ({ isOpen, onClose, onSave, log }) => {
     const [qty, setQty] = useState(0);
     const [reason, setReason] = useState("");
-    const [editReason, setEditReason] = useState("");
+    const [editReason, setEditReason] = useState(""); 
 
     useEffect(() => {
         if (log) {
             setQty(log.quantity_added);
             setReason(log.reason || "");
-            setEditReason(log.edit_reason || "");
+            setEditReason(log.edit_reason || ""); 
         }
     }, [log, isOpen]);
 
@@ -77,23 +92,19 @@ const EditLogModal = ({ isOpen, onClose, onSave, log }) => {
     );
 };
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: انتخابگر تاریخ شمسی]
+// کامپوننت PersianDatePicker که قبلاً در Extra Pages بود و در Log Page کاربرد دارد.
+// ----------------------------------------------------------------------------------------------------
 const PersianDatePicker = ({ label, value, onChange }) => {
-    // برای سادگی، از توابع کمکی موجود در Logic استفاده نمی‌کنیم چون این کامپوننت state داخلی دارد
-    // اما برای رندر از توابع Logic که پاس داده نشده‌اند استفاده نمی‌کند، خودش توابع کمکی داخلی دارد.
-    // در اینجا توابع toEnglishDigits و toPersianDigits را مجدد تعریف میکنیم یا از window میگیریم اگر سراسری باشند.
-    // اما چون در فایل Extra Pages بودند و الان جدا شدند، بهتر است همینجا کپی کوچک داشته باشیم یا از لاجیک بگیریم.
-    // راه حل: فرض میکنیم این توابع در لاجیک هستند، اما چون DatePicker مستقل است، کپی کوچک اینجا امن‌تر است.
-    
-    const toEnglishDigits = (str) => String(str).replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/\//g, '/');
-    const toPersianDigits = (str) => String(str).replace(/[0-9]/g, d => "۰۱۲۳۴۵۶۷۸۹"[d]);
+    const [isOpen, setIsOpen] = useState(false);
+    const [tempDate, setTempDate] = useState({ y: 1403, m: 1, d: 1 });
+    const popupRef = useRef(null);
+
     const persianMonths = [
         "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
         "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
     ];
-
-    const [isOpen, setIsOpen] = useState(false);
-    const [tempDate, setTempDate] = useState({ y: 1403, m: 1, d: 1 });
-    const popupRef = useRef(null);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -107,7 +118,7 @@ const PersianDatePicker = ({ label, value, onChange }) => {
 
     useEffect(() => {
         if (value) {
-            const parts = toEnglishDigits(value).split('/');
+            const parts = toEnglishDigitsUI(value).split('/');
             if (parts.length === 3) {
                 setTempDate({ y: parseInt(parts[0]), m: parseInt(parts[1]), d: parseInt(parts[2]) });
             }
@@ -136,15 +147,15 @@ const PersianDatePicker = ({ label, value, onChange }) => {
         <div className="relative" ref={popupRef}>
             <span className="absolute -top-2 right-2 text-[9px] text-gray-400 bg-[#1e293b] px-1 z-10">{label}</span>
             <div onClick={() => setIsOpen(!isOpen)} className="nexus-input w-full h-[38px] px-3 py-2 text-sm bg-black/20 border-white/10 cursor-pointer flex items-center justify-between hover:bg-white/5 transition">
-                <span className={value ? "text-white" : "text-gray-500"}>{value ? toPersianDigits(value) : "انتخاب کنید..."}</span>
+                <span className={value ? "text-white" : "text-gray-500"}>{value ? toPersianDigitsUI(value) : "انتخاب کنید..."}</span>
                 <i data-lucide="calendar" className="w-4 h-4 text-gray-400"></i>
             </div>
             {isOpen && (
                 <div className="absolute top-full right-0 mt-2 w-64 bg-[#1e293b] border border-white/10 rounded-xl shadow-2xl z-50 p-4 animate-in fade-in zoom-in-95 duration-200">
                     <div className="flex gap-2 mb-4">
-                        <div className="flex-1"><label className="block text-[10px] text-gray-500 mb-1 text-center">سال</label><select className="w-full bg-black/30 border border-white/10 rounded-lg text-sm p-1 text-center text-white" value={tempDate.y} onChange={e => setTempDate({...tempDate, y: parseInt(e.target.value)})}>{years.map(y => <option key={y} value={y}>{toPersianDigits(y)}</option>)}</select></div>
+                        <div className="flex-1"><label className="block text-[10px] text-gray-500 mb-1 text-center">سال</label><select className="w-full bg-black/30 border border-white/10 rounded-lg text-sm p-1 text-center text-white" value={tempDate.y} onChange={e => setTempDate({...tempDate, y: parseInt(e.target.value)})}>{years.map(y => <option key={y} value={y}>{toPersianDigitsUI(y)}</option>)}</select></div>
                         <div className="flex-[1.5]"><label className="block text-[10px] text-gray-500 mb-1 text-center">ماه</label><select className="w-full bg-black/30 border border-white/10 rounded-lg text-sm p-1 text-center text-white" value={tempDate.m} onChange={e => setTempDate({...tempDate, m: parseInt(e.target.value)})}>{persianMonths.map((m, i) => <option key={i} value={i+1}>{m}</option>)}</select></div>
-                        <div className="flex-1"><label className="block text-[10px] text-gray-500 mb-1 text-center">روز</label><select className="w-full bg-black/30 border border-white/10 rounded-lg text-sm p-1 text-center text-white" value={tempDate.d} onChange={e => setTempDate({...tempDate, d: parseInt(e.target.value)})}>{days.map(d => <option key={d} value={d}>{toPersianDigits(d)}</option>)}</select></div>
+                        <div className="flex-1"><label className="block text-[10px] text-gray-500 mb-1 text-center">روز</label><select className="w-full bg-black/30 border border-white/10 rounded-lg text-sm p-1 text-center text-white" value={tempDate.d} onChange={e => setTempDate({...tempDate, d: parseInt(e.target.value)})}>{days.map(d => <option key={d} value={d}>{toPersianDigitsUI(d)}</option>)}</select></div>
                     </div>
                     <div className="flex gap-2"><button onClick={handleClear} className="flex-1 py-1.5 rounded-lg border border-white/10 text-xs text-gray-400 hover:bg-white/5 transition">پاک کردن</button><button onClick={handleConfirm} className="flex-1 py-1.5 rounded-lg bg-nexus-primary hover:bg-indigo-600 text-xs text-white font-bold transition shadow-lg">تایید</button></div>
                 </div>
@@ -210,8 +221,8 @@ const LogPage = () => {
                     {filteredLogs.length === 0 ? (<div className="text-center text-gray-500 py-20 bg-white/5 rounded-2xl border border-dashed border-white/10"><i data-lucide="search-x" className="w-12 h-12 mx-auto mb-3 opacity-50"></i><p>موردی یافت نشد.</p></div>) : (
                         filteredLogs.map(l => {
                             // ------------------------------------------------------------------------
-                            // [تگ: اصلاح منطق رنگ‌بندی]
-                            // این بخش طبق آخرین دستور اصلاح شده است:
+                            // [تگ: آخرین فیکس منطق رنگ‌بندی]
+                            // این بخش دقیقا طبق آخرین توافق اصلاح شده است:
                             // ۱. اگر تعداد کم شده (منفی) -> قرمز (خروج)
                             // ۲. اگر تعداد اضافه شده یا ثبت اولیه است -> سبز (ورود)
                             // ۳. اگر فقط اطلاعات عوض شده و تعداد صفر است -> زرد (ویرایش)

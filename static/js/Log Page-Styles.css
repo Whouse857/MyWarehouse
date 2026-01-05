@@ -5,7 +5,9 @@
 ==================================================================================================== 
 */
 
-/* انیمیشن باز شدن مودال و پاپ‌آپ */
+/* -------------------------------------------------------------------------------------------------
+   [SECTION 1] انیمیشن‌ها (Animations)
+------------------------------------------------------------------------------------------------- */
 @keyframes scale-in {
     from { transform: scale(0.95); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
@@ -15,7 +17,16 @@
     animation: scale-in 0.2s ease-out forwards;
 }
 
-/* انیمیشن ظاهر شدن منوها */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes zoomIn95 {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
 .animate-in {
     animation-duration: 0.2s;
     animation-fill-mode: forwards;
@@ -30,17 +41,23 @@
     animation-name: zoomIn95;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+.slide-in-from-right-2 {
+    animation-name: slideInRight;
 }
 
-@keyframes zoomIn95 {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+@keyframes slideInRight {
+    from { transform: translateX(0.5rem); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
 }
 
-/* اسکرول‌بار سفارشی برای لیست لاگ‌ها */
+/* -------------------------------------------------------------------------------------------------
+   [SECTION 2] پنل‌ها و اسکرول (Panels & Scroll)
+------------------------------------------------------------------------------------------------- */
+.glass-panel {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+}
+
 .custom-scroll::-webkit-scrollbar {
     width: 8px;
 }
@@ -53,10 +70,4 @@
 }
 .custom-scroll::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
-}
-
-/* پنل شیشه‌ای برای مودال‌ها */
-.glass-panel {
-    background: rgba(30, 41, 59, 0.7);
-    backdrop-filter: blur(10px);
 }

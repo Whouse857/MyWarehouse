@@ -4,7 +4,7 @@
  * نسخه: 0.25 (Logic Layer - مغز متفکر صفحه لاگ)
  * توضیحات:
  * این فایل تمامی محاسبات، ارتباط با سرور و مدیریت وضعیت (State) صفحه تاریخچه را بر عهده دارد.
- * هیچ کد UI در این فایل وجود ندارد.
+ * هیچ کد UI (تگ‌های HTML/JSX) در این فایل وجود ندارد.
  * ====================================================================================================
  */
 
@@ -19,7 +19,7 @@ window.useLogLogic = () => {
 
     // ------------------------------------------------------------------------------------------------
     // [تگ: توابع کمکی داخلی]
-    // کپی شده از Extra Pages برای استقلال کامل ماژول
+    // این توابع عیناً از Extra Pages کپی شده‌اند تا این ماژول کاملاً مستقل باشد.
     // ------------------------------------------------------------------------------------------------
     const toEnglishDigits = (str) => {
         if (!str) return str;
@@ -33,13 +33,16 @@ window.useLogLogic = () => {
 
     const getPartCodeLog = (l, config) => {
         if (!l) return "---";
+        // اولویت با کد ذخیره شده در دیتابیس است
         if (l.part_code) return l.part_code;
+
+        // حالت رزرو برای لاگ‌های قدیمی (تولید از روی ID)
         const prefix = (config && config[l.type]?.prefix) || "PRT";
         const numeric = String(l.part_id || 0).padStart(9, '0');
         return `${prefix}${numeric}`;
     };
 
-    // لیست ماه‌های شمسی برای اکسپورت به UI
+    // لیست ماه‌های شمسی برای استفاده در فیلترها
     const persianMonths = [
         "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
         "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
@@ -73,7 +76,7 @@ window.useLogLogic = () => {
     useEffect(() => { loadLogs(); }, [loadLogs]);
 
     // ------------------------------------------------------------------------------------------------
-    // [تگ: عملیات حذف و ویرایش]
+    // [تگ: حذف لاگ]
     // ------------------------------------------------------------------------------------------------
     const handleDeleteLog = async (log) => {
         const text = `آیا از حذف این تراکنش و اصلاح "معکوس" موجودی انبار اطمینان دارید؟\nمقدار: ${log.quantity_added} عدد`;
@@ -88,11 +91,14 @@ window.useLogLogic = () => {
         }
     };
 
+    // ------------------------------------------------------------------------------------------------
+    // [تگ: ویرایش لاگ]
+    // ------------------------------------------------------------------------------------------------
     const handleUpdateLog = async (updatedData) => {
         try {
             const result = await fetchAPI('/log/update', { 
                 method: 'POST', 
-                body: updatedData 
+                body: updatedData // ارسال کل آبجکت شامل edit_reason
             });
             
             if (result.ok) {
@@ -106,8 +112,7 @@ window.useLogLogic = () => {
     };
 
     // ------------------------------------------------------------------------------------------------
-    // [تگ: فیلترینگ]
-    // منطق فیلتر کردن لیست لاگ‌ها
+    // [تگ: فیلترینگ لاگ‌ها]
     // ------------------------------------------------------------------------------------------------
     const filteredLogs = useMemo(() => {
         return logList.filter(l => {
@@ -118,7 +123,7 @@ window.useLogLogic = () => {
             if (filters.startDate && logShamsi < filters.startDate) return false;
             if (filters.endDate && logShamsi > filters.endDate) return false;
             
-            // فیلتر جستجوی عمومی
+            // فیلتر جستجوی عمومی (در تمام فیلدها)
             const terms = filters.general ? toEnglishDigits(filters.general.toLowerCase()).trim().split(/\s+/) : [];
             const searchableText = toEnglishDigits(`${l.val || ''} ${l.username || ''} ${l.operation_type || ''} ${l.reason || ''} ${l.invoice_number || ''} ${getPartCodeLog(l, config)}`.toLowerCase());
             const generalMatch = terms.length === 0 || terms.every(term => searchableText.includes(term));
@@ -133,7 +138,7 @@ window.useLogLogic = () => {
 
     // ------------------------------------------------------------------------------------------------
     // [تگ: خروجی]
-    // ارسال تمام داده‌ها و توابع مورد نیاز به UI
+    // تمام متغیرها و توابعی که UI به آنها نیاز دارد
     // ------------------------------------------------------------------------------------------------
     return {
         logList,
@@ -145,7 +150,7 @@ window.useLogLogic = () => {
         handleDeleteLog,
         handleUpdateLog,
         loadLogs,
-        // Utils exported for UI
+        // Utils
         toEnglishDigits,
         toPersianDigits,
         getPartCodeLog,
