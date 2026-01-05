@@ -1,0 +1,189 @@
+/* ====================================================================================================
+   نسخه: 0.22 (اصلاح شده)
+   فایل: Withdraw Page-styles.css
+   توضیحات: استایل‌های اختصاصی صفحه برداشت.
+   تغییرات: نام کلاس‌ها برای جلوگیری از تداخل با صفحه Entry Page تغییر کردند (پیشوند wp-).
+   ==================================================================================================== */
+
+/* تنظیم اسکرول بار (مشترک - بدون تغییر) */
+.custom-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) rgba(0, 0, 0, 0.1);
+}
+.custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scroll::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.1); border-radius: 4px; }
+.custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+.custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+
+/* انیمیشن‌ها */
+@keyframes zoomIn { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
+.zoom-in { animation: zoomIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards; }
+
+@keyframes scale-in-pop { from { opacity: 0; transform: scale(0.95) translateY(-10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+/* افکت‌های Hover */
+.glass-panel:hover { box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5); }
+
+/* ------------------------------------------------------------------ */
+/* [تگ: استایل‌های فیلتر پیشرفته - مستقل سازی شده] */
+/* نام تمام کلاس‌ها با wp- شروع می‌شود تا با صفحه دیگر تداخل نکند */
+/* ------------------------------------------------------------------ */
+
+/* پاپ‌آپ فیلتر */
+.wp-filter-popup {
+    position: absolute;
+    top: 100%;
+    left: 0; /* چپ چین مخصوص این صفحه */
+    z-index: 50;
+    width: 320px;
+    margin-top: 12px;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    padding: 16px;
+    animation: scale-in-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.wp-filter-popup::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 20px;
+    width: 12px;
+    height: 12px;
+    background: inherit;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    transform: rotate(-45deg);
+}
+
+/* ردیف شرط */
+.wp-condition-row {
+    position: relative;
+    margin-bottom: 10px;
+    animation: zoomIn 0.2s;
+}
+
+/* خط اتصال */
+.wp-condition-connector {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 6px 0;
+    position: relative;
+}
+.wp-condition-connector::before {
+    content: '';
+    position: absolute;
+    height: 100%;
+    width: 1px;
+    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.2), rgba(255,255,255,0));
+    z-index: 0;
+}
+
+/* دکمه‌های منطقی */
+.wp-logic-btn {
+    position: relative;
+    z-index: 1;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.wp-logic-btn.and { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34d399; }
+.wp-logic-btn.or { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24; }
+.wp-logic-btn:hover { transform: scale(1.1); filter: brightness(1.2); }
+
+/* دکمه حذف شرط */
+.wp-remove-condition-btn {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, 0.2);
+    transition: all 0.2s;
+}
+.wp-remove-condition-btn:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-radius: 4px; }
+
+/* دکمه افزودن شرط */
+.wp-add-condition-btn {
+    width: 100%;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.02);
+    color: #94a3b8;
+    font-size: 11px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: bold;
+}
+.wp-add-condition-btn:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(99, 102, 241, 0.5); color: #818cf8; }
+
+/* نوار فیلترهای فعال */
+.wp-active-filters-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    align-items: center;
+    animation: zoomIn 0.2s;
+}
+
+.wp-filter-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    color: #e2e8f0;
+    font-size: 11px;
+    font-weight: bold;
+    animation: zoomIn 0.15s;
+    transition: all 0.2s;
+}
+.wp-filter-chip:hover { background: rgba(99, 102, 241, 0.25); }
+.wp-filter-chip span.label { color: #a5b4fc; }
+.wp-filter-chip button {
+    display: flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1); cursor: pointer; transition: all 0.2s;
+    color: rgba(255, 255, 255, 0.7);
+}
+.wp-filter-chip button:hover { background: rgba(239, 68, 68, 0.8); color: white; }
+
+/* دکمه تاگل فیلتر */
+.wp-filter-toggle-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.wp-filter-toggle-btn.active {
+    background-color: rgba(99, 102, 241, 0.2);
+    color: #818cf8;
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+    border-color: rgba(99, 102, 241, 0.5);
+}
+.wp-filter-toggle-btn.has-filters { position: relative; }
+.wp-filter-toggle-btn.has-filters::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    background-color: #0ea5e9;
+    border-radius: 50%;
+    box-shadow: 0 0 5px #0ea5e9;
+}

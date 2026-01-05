@@ -1,18 +1,12 @@
 // ====================================================================================================
-// نسخه: 0.26
+// نسخه: 0.27 (اصلاح شده)
 // فایل: entry page-logic.js
-// توصیف: منطق صفحه ورود کالا.
-// تغییرات جدید: 
-// - جایگزینی فیلترهای جداگانه با specConditions (آرایه شرط‌ها).
-// - پیاده‌سازی منطق جستجوی جامع در تمام فیلدها.
-// - قابلیت AND/OR بین کادرهای جستجو.
+// تغییرات: رفع باگ trim() بر روی مقادیر undefined
 // ====================================================================================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
-// ----------------------------------------------------------------------------------------------------
-// [تگ: نگاشت فیلدهای پویا]
-// ----------------------------------------------------------------------------------------------------
+// ... (بقیه کدها و ثوابت ثابت مثل DYNAMIC_FIELDS_MAP و getPartCode بدون تغییر) ...
 const DYNAMIC_FIELDS_MAP = [
     { key: 'units', stateKey: 'unit', label: 'واحد' },
     { key: 'tolerances', stateKey: 'tol', label: 'تولرانس' },
@@ -48,12 +42,9 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
     const [contacts, setContacts] = useState([]);
     
     // --- استیت‌های فیلتر ---
-    // فیلتر کد جدا می‌ماند
     const [codeFilter, setCodeFilter] = useState("");
     
-    // فیلتر مشخصات: آرایه‌ای از شرط‌ها
-    // هر شرط: { id, value: متن جستجو, logic: رابطه با شرط قبلی (AND/OR) }
-    // منطق: شرط اول همیشه پایه است، شرط دوم با logic خودش به نتیجه شرط اول وصل می‌شود.
+    // اصلاح مقداردهی اولیه برای اطمینان از وجود رشته خالی
     const [specConditions, setSpecConditions] = useState([
         { id: 1, value: '', logic: 'AND' }
     ]);
@@ -66,7 +57,7 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
     const notify = useNotify();
     const dialog = useDialog();
 
-    // --- بارگذاری اطلاعات ---
+    // ... (بقیه کدهای لودینگ و ... بدون تغییر) ...
     const loadData = useCallback(async () => { 
         try { 
             const [partsRes, contactsRes] = await Promise.all([fetchAPI('/parts'), fetchAPI('/contacts')]);
@@ -111,7 +102,7 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
     const addSpecCondition = () => {
         setSpecConditions(prev => [
             ...prev,
-            { id: Date.now(), value: '', logic: 'AND' } // پیش‌فرض AND است
+            { id: Date.now(), value: '', logic: 'AND' }
         ]);
     };
 
@@ -124,7 +115,9 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
     };
 
     const updateSpecCondition = (id, newValue) => {
-        setSpecConditions(prev => prev.map(c => c.id === id ? { ...c, value: newValue } : c));
+        // اطمینان از اینکه مقدار هرگز null یا undefined نمی‌شود
+        const safeValue = newValue || "";
+        setSpecConditions(prev => prev.map(c => c.id === id ? { ...c, value: safeValue } : c));
     };
 
     const toggleSpecLogic = (id) => {
@@ -139,27 +132,22 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
         const activeCategory = normalize(formData.type);
         const filterCode = normalize(codeFilter);
 
-        // بررسی اینکه آیا شرط‌های مشخصات اصلا مقداری دارند؟
-        const hasSpecFilters = specConditions.some(c => c.value.trim() !== '');
+        // اصلاح شرط برای جلوگیری از خطا: چک کردن value وجود داشته باشد
+        const hasSpecFilters = specConditions.some(c => c && c.value && c.value.trim() !== '');
 
         if (!Array.isArray(partsList)) return [];
 
         return partsList.filter(p => {
             if (!p) return false;
 
-            // 1. فیلتر دسته‌بندی اصلی (تب بالا)
             if (activeCategory && normalize(p.type) !== activeCategory) return false;
 
-            // 2. فیلتر کد اختصاصی (جداگانه)
             if (filterCode) {
                 const pCode = normalize(getPartCode(p, globalConfig));
                 if (!pCode.includes(filterCode)) return false;
             }
 
-            // 3. فیلتر پیشرفته مشخصات (Query Builder)
             if (hasSpecFilters) {
-                // ساختن یک رشته بزرگ از تمام مشخصات قطعه برای جستجوی جامع
-                // شامل: مقدار، پکیج، آدرس، تکنولوژی، توضیحات
                 const partAllSpecs = (
                     normalize(p.val) + " " +
                     normalize(p.package) + " " +
@@ -169,23 +157,22 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
                     normalize(p.tolerance)
                 );
 
-                // ارزیابی زنجیره‌ای شرط‌ها
-                let finalResult = false; // مقدار اولیه مهم نیست چون با شرط اول ست می‌شود
+                let finalResult = false;
 
                 specConditions.forEach((condition, index) => {
-                    const term = normalize(condition.value);
+                    // استفاده از مقدار امن
+                    const term = normalize(condition.value || "");
                     let isMatch = true;
 
                     if (term) {
                         isMatch = partAllSpecs.includes(term);
                     } else {
-                        isMatch = true; // اگر کادر خالی است، پاس می‌شود (تاثیری نگذارد)
+                        isMatch = true;
                     }
 
                     if (index === 0) {
                         finalResult = isMatch;
                     } else {
-                        // اعمال منطق نسبت به نتیجه قبلی
                         if (condition.logic === 'AND') {
                             finalResult = finalResult && isMatch;
                         } else {
@@ -201,7 +188,7 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
         });
     }, [partsList, specConditions, codeFilter, formData.type, globalConfig]);
 
-    // --- گزینه‌های داینامیک ---
+    // ... (بقیه توابع مثل vendorOptions, locationOptions, handleChange و ... بدون تغییر) ...
     const vendorOptions = useMemo(() => {
         const names = contacts.map(c => c.name);
         if (formData.vendor_name && !names.includes(formData.vendor_name)) names.push(formData.vendor_name);
@@ -218,7 +205,6 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
 
     useLucide([filteredParts.length, formData.type, duplicates.length, activeFilterPopup, specConditions.length]);
 
-    // --- مدیریت تغییرات فرم ---
     const handleChange = useCallback((key, val) => {
         let v = val;
         if (key === 'qty' || key === 'min_qty') {
@@ -263,7 +249,6 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
         }));
     };
 
-    // --- توابع کمکی فیلتر ---
     const toggleFilterPopup = (popupName) => {
         setActiveFilterPopup(prev => prev === popupName ? null : popupName);
     };
@@ -276,7 +261,6 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
         }
     };
 
-    // --- عملیات CRUD ---
     const handleSubmit = () => {
         const newErrors = {};
         const typeConfig = globalConfig?.[formData.type] || {}; 
