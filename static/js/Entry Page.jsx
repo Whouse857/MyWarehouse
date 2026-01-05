@@ -1,20 +1,67 @@
 // ====================================================================================================
-// نسخه: 0.22
+// نسخه: 0.26
 // فایل: EntryPage.jsx
-// توضیحات: فایل نمایش (View) که وظیفه رندر کردن رابط کاربری را بر عهده دارد.
-// اصلاحات: 
-// 1. هوشمندسازی فیلترها: فیلترها فقط زمانی نمایش داده می‌شوند که فیلد مربوطه فعال باشد.
-// 2. تغییر لی‌اوت نوار جستجو به Flex برای پر کردن فضای خالی در صورت حذف شدن یک فیلتر.
+// توضیحات: فایل نمایش اصلاح شده.
+// - جایگزینی فیلترهای قدیمی با سیستم Query Builder در پاپ‌آپ مشخصات.
+// - نمایش نوار فیلترهای فعال به صورت چیپ‌های هوشمند.
 // ====================================================================================================
 
-// دریافت React و Hook ها از فضای جهانی
 const { useState, useEffect, useRef } = React;
-
-// دریافت توابع منطقی که در فایل entry page-logic.js به window متصل شدند
 const { useEntryPageLogic, getPartCode, DYNAMIC_FIELDS_MAP } = window;
 
 // ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت مودال خلاصه وضعیت]
+// [تگ: کامپوننت پاپ‌آپ فیلتر]
+// ----------------------------------------------------------------------------------------------------
+const FilterPopup = ({ title, children, onClear, width }) => {
+    return (
+        <div className="filter-popup" style={width ? {width} : {}} onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/10">
+                <span className="text-xs font-bold text-nexus-accent">{title}</span>
+                <button onClick={onClear} className="text-[10px] text-gray-500 hover:text-red-400 transition">پاک کردن</button>
+            </div>
+            <div className="custom-scroll max-h-[300px] overflow-y-auto pr-1">
+                {children}
+            </div>
+        </div>
+    );
+};
+
+// ----------------------------------------------------------------------------------------------------
+// [تگ: نوار فیلترهای فعال]
+// ----------------------------------------------------------------------------------------------------
+const ActiveFiltersBar = ({ codeFilter, specConditions, onClearCode, onRemoveSpec, setCodeFilter }) => {
+    // بررسی اینکه آیا فیلتری فعال است؟
+    const hasCode = codeFilter.trim() !== '';
+    const activeSpecs = specConditions.filter(c => c.value.trim() !== '');
+
+    if (!hasCode && activeSpecs.length === 0) return null;
+
+    return (
+        <div className="active-filters-bar animate-in fade-in slide-in-from-top-2">
+            <span className="text-[10px] text-gray-400 ml-2">فیلترهای فعال:</span>
+            
+            {hasCode && (
+                <div className="filter-chip">
+                    <span className="label">کد:</span>
+                    <span className="value font-mono dir-ltr">{codeFilter}</span>
+                    <button onClick={onClearCode}><i data-lucide="x" className="w-2.5 h-2.5"></i></button>
+                </div>
+            )}
+
+            {activeSpecs.map((spec, idx) => (
+                <div key={spec.id} className="filter-chip">
+                    {idx > 0 && <span className="text-[9px] text-gray-500 mx-1">({spec.logic})</span>}
+                    <span className="label">شامل:</span>
+                    <span className="value font-mono dir-ltr">{spec.value}</span>
+                    <button onClick={() => onRemoveSpec(spec.id)}><i data-lucide="x" className="w-2.5 h-2.5"></i></button>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+// ----------------------------------------------------------------------------------------------------
+// [تگ: مودال خلاصه] (بدون تغییر)
 // ----------------------------------------------------------------------------------------------------
 const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     if (!isOpen) return null;
@@ -29,10 +76,8 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
                         <span className="text-blue-300 font-bold">کد ۱۲ کاراکتری:</span> 
                         <span className="text-white font-black font-mono tracking-widest">{fullCode}</span>
                     </div>
-                    {/* نمایش جزئیات ثبت شده */}
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>نوع:</span> <span className="text-white font-bold">{data.type}</span></div>
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>مقدار:</span> <span className="text-white font-bold ltr font-mono">{data.val} {data.unit}</span></div>
-                    {/* نمایش شرطی پکیج در خلاصه وضعیت */}
                     {data.pkg && <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>پکیج:</span> <span className="text-white font-bold">{data.pkg}</span></div>}
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>تعداد:</span> <span className="text-emerald-400 font-bold ltr font-mono">{data.qty}</span></div>
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>قیمت کل:</span> <span className="text-amber-400 font-bold ltr font-mono">{data.price_toman} تومان</span></div>
@@ -48,9 +93,6 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     );
 };
 
-// ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت دراپ‌داون قابل جستجو]
-// ----------------------------------------------------------------------------------------------------
 const SearchableDropdown = ({ label, value, options, onChange, disabled, placeholder, error }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
@@ -125,32 +167,31 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
 };
 
 // ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت اصلی صفحه ورود]
+// [تگ: کامپوننت اصلی]
 // ----------------------------------------------------------------------------------------------------
 const EntryPage = (props) => {
-    // دریافت لاجیک از هوک سفارشی
     const logic = useEntryPageLogic(props);
     const { 
-        formData, setFormData, partsList, filters, setFilters, errors, 
-        showSummary, setShowSummary, linkInput, setLinkInput,
-        duplicates, filteredParts, vendorOptions, locationOptions, currentConfig,
+        formData, setFormData, partsList, 
+        codeFilter, setCodeFilter,
+        specConditions, addSpecCondition, removeSpecCondition, updateSpecCondition, toggleSpecLogic,
+        activeFilterPopup, toggleFilterPopup, clearFilterGroup,
+        errors, setErrors,
+        showSummary, setShowSummary,
+        linkInput, setLinkInput,
+        duplicates, filteredParts,
+        vendorOptions, locationOptions, currentConfig,
         handleChange, preventNonNumeric, handleAddLink, handleRemoveLink,
         handleSubmit, handleFinalSubmit, handleEdit, handleDelete, getLabel, isVisible
     } = logic;
 
     const { serverStatus, globalConfig } = props;
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: رندر رابط کاربری (JSX)]
-    // ------------------------------------------------------------------------------------------------
     return (
         <ErrorBoundary>
-            {/* استفاده از کلاس CSS تعریف شده در EntryPage.css */}
             <div className="entry-page-container">
-                {/* مودال پیش‌نمایش */}
                 <SummaryModal isOpen={showSummary} onClose={() => setShowSummary(false)} onConfirm={handleFinalSubmit} data={formData} globalConfig={globalConfig} />
                 
-                {/* هدر صفحه */}
                 <header className="h-16 border-b border-white/5 flex items-center justify-end px-6 bg-black/20 backdrop-blur-md sticky top-0 z-10">
                     <div className="flex items-center gap-3"><span className="text-xs text-nexus-accent font-bold">تعداد قطعات موجود: {partsList.length}</span><div className="w-2 h-2 rounded-full bg-nexus-primary animate-pulse"></div></div>
                 </header>
@@ -158,30 +199,109 @@ const EntryPage = (props) => {
                 <div className="flex-1 p-6">
                     <div className="grid grid-cols-12 gap-6">
                         
-                        {/* ---------------------------------------------------------------------- */}
-                        {/* ستون لیست قطعات (سمت چپ در دسکتاپ، پایین در موبایل)                     */}
-                        {/* ---------------------------------------------------------------------- */}
+                        {/* --- ستون لیست قطعات --- */}
                         <div className="col-span-12 lg:col-span-8 flex flex-col order-2 lg:order-1">
-                            <div className="glass-panel rounded-2xl flex flex-col">
-                                {/* نوار جستجو و فیلترها */}
-                                {/* تغییر: استفاده از Flex و gap-2 برای چیدمان داینامیک */}
-                                <div className="p-3 border-b border-white/5 flex flex-wrap gap-2 bg-white/5">
-                                    <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder="کد 12 رقمی..." value={filters.code} onChange={e => setFilters({...filters, code: e.target.value})} />
-                                    <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder={`فیلتر ${getLabel('val', 'مقدار').replace(' *', '')}...`} value={filters.val} onChange={e => setFilters({...filters, val: e.target.value})} />
+                            <div className="glass-panel rounded-2xl flex flex-col relative">
+                                
+                                {/* نوار فیلترهای فعال */}
+                                <ActiveFiltersBar 
+                                    codeFilter={codeFilter} 
+                                    specConditions={specConditions} 
+                                    onClearCode={() => clearFilterGroup('code')}
+                                    onRemoveSpec={removeSpecCondition}
+                                    setCodeFilter={setCodeFilter}
+                                />
+
+                                {/* هدر لیست */}
+                                <div className="grid grid-cols-12 gap-2 bg-black/30 p-3 border-b border-white/5 text-[11px] text-gray-400 font-bold items-center sticky top-0 z-20">
                                     
-                                    {/* نمایش شرطی فیلتر پکیج */}
-                                    {isVisible('packages') && (
-                                        <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder={`فیلتر ${getLabel('packages', 'پکیج').replace(' *', '')}...`} value={filters.pkg} onChange={e => setFilters({...filters, pkg: e.target.value})} />
-                                    )}
+                                    {/* ستون کد اختصاصی */}
+                                    <div className="col-span-2 text-right pr-2 flex items-center gap-2 relative">
+                                        <span>کد اختصاصی</span>
+                                        <div 
+                                            className={`filter-icon-btn ${activeFilterPopup === 'code' ? 'active' : ''} ${codeFilter ? 'has-value' : ''}`}
+                                            onClick={(e) => { e.stopPropagation(); toggleFilterPopup('code'); }}
+                                        >
+                                            <i data-lucide="filter" className="w-3.5 h-3.5"></i>
+                                        </div>
+                                        {activeFilterPopup === 'code' && (
+                                            <FilterPopup title="جستجوی کد" onClear={() => clearFilterGroup('code')}>
+                                                <input className="nexus-input w-full px-2 py-1.5 text-xs" autoFocus placeholder="جستجو..." value={codeFilter} onChange={e => setCodeFilter(e.target.value)} />
+                                            </FilterPopup>
+                                        )}
+                                    </div>
+
+                                    {/* ستون مشخصات فنی (سیستم پیشرفته) */}
+                                    <div className="col-span-5 text-right flex items-center gap-2 relative">
+                                        <span>مشخصات فنی</span>
+                                        <div 
+                                            className={`filter-icon-btn ${activeFilterPopup === 'specs' ? 'active' : ''} ${specConditions.some(c => c.value) ? 'has-value' : ''}`}
+                                            onClick={(e) => { e.stopPropagation(); toggleFilterPopup('specs'); }}
+                                        >
+                                            <i data-lucide="filter" className="w-3.5 h-3.5"></i>
+                                        </div>
+                                        {activeFilterPopup === 'specs' && (
+                                            <FilterPopup title="جستجوی پیشرفته مشخصات" width="300px" onClear={() => clearFilterGroup('specs')}>
+                                                
+                                                {/* لیست شرط‌ها */}
+                                                {specConditions.map((cond, index) => (
+                                                    <div key={cond.id} className="condition-row">
+                                                        
+                                                        {/* دکمه اتصال منطقی (فقط بین شرط‌ها) */}
+                                                        {index > 0 && (
+                                                            <div className="condition-connector">
+                                                                <button 
+                                                                    className={`logic-btn ${cond.logic.toLowerCase()}`}
+                                                                    onClick={(e) => { e.stopPropagation(); toggleSpecLogic(cond.id); }}
+                                                                >
+                                                                    {cond.logic}
+                                                                </button>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="relative">
+                                                            {/* کادر جستجو */}
+                                                            <input 
+                                                                className="nexus-input w-full px-2 py-1.5 pl-8 text-xs" 
+                                                                placeholder={index === 0 ? "مثلاً: 100k 0805" : "شرط بعدی..."}
+                                                                value={cond.value} 
+                                                                onChange={e => updateSpecCondition(cond.id, e.target.value)}
+                                                                autoFocus={index === specConditions.length - 1} // فوکوس روی آخرین کادر اضافه شده
+                                                            />
+                                                            
+                                                            {/* دکمه حذف سطر (اگر بیشتر از یکی باشد) */}
+                                                            {specConditions.length > 1 && (
+                                                                <button 
+                                                                    className="remove-condition-btn" 
+                                                                    onClick={(e) => { e.stopPropagation(); removeSpecCondition(cond.id); }}
+                                                                    title="حذف این شرط"
+                                                                >
+                                                                    <i data-lucide="trash-2" className="w-3.5 h-3.5"></i>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+
+                                                {/* دکمه افزودن شرط جدید */}
+                                                <button 
+                                                    className="add-condition-btn mt-2" 
+                                                    onClick={(e) => { e.stopPropagation(); addSpecCondition(); }}
+                                                >
+                                                    <i data-lucide="plus" className="w-3.5 h-3.5"></i>
+                                                    <span>افزودن شرط جدید</span>
+                                                </button>
+
+                                            </FilterPopup>
+                                        )}
+                                    </div>
                                     
-                                    <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder={`فیلتر ${getLabel('location', 'آدرس').replace(' *', '')}...`} value={filters.loc} onChange={e => setFilters({...filters, loc: e.target.value})} />
-                                    <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder="فیلتر نوع..." value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})} />
+                                    <div className="col-span-1 text-center">تعداد</div>
+                                    <div className="col-span-2 text-center">قیمت</div>
+                                    <div className="col-span-2 text-center">عملیات</div>
                                 </div>
                                 
-                                {/* هدر لیست */}
-                                <div className="grid grid-cols-12 gap-2 bg-black/30 p-3 border-b border-white/5 text-[11px] text-gray-400 font-bold text-center"><div className="col-span-2 text-right pr-2">کد اختصاصی</div><div className="col-span-5 text-right">مشخصات فنی</div><div className="col-span-1">تعداد</div><div className="col-span-2">قیمت</div><div className="col-span-2">عملیات</div></div>
-                                
-                                {/* بدنه لیست قطعات */}
+                                {/* بدنه لیست */}
                                 <div className="p-2 space-y-2">
                                     {filteredParts.map(p => {
                                         const pCode = getPartCode(p, globalConfig);
@@ -214,15 +334,12 @@ const EntryPage = (props) => {
                             </div>
                         </div>
 
-                        {/* ---------------------------------------------------------------------- */}
-                        {/* ستون فرم ورود اطلاعات (سمت راست در دسکتاپ، بالا در موبایل)               */}
-                        {/* ---------------------------------------------------------------------- */}
+                        {/* --- ستون فرم ورود (بدون تغییر) --- */}
                         <div className="col-span-12 lg:col-span-4 h-full order-1 lg:order-2">
                             <div className="glass-panel border-white/10 rounded-2xl p-5 h-full flex flex-col shadow-2xl relative">
                                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-nexus-primary to-purple-600"></div>
                                 <h2 className="text-lg font-bold text-white mb-6 flex items-center justify-between"><span>{formData.id ? 'ویرایش قطعه' : 'ثبت قطعه جدید'}</span>{formData.id && <button onClick={() => setFormData({id: null, val: "", unit: (currentConfig.units && currentConfig.units[0]) || "", watt: "", tol: "", pkg: "", type: "Resistor", date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: "", vendor_name: "", location: "", tech: "", purchase_links: []})} className="text-xs text-gray-400 hover:text-white bg-white/5 px-2 py-1 rounded transition">انصراف</button>}</h2>
                                 
-                                {/* بخش نمایش هشدارهای تکراری */}
                                 {duplicates.length > 0 && !formData.id && (
                                     <div className="mb-6 bg-yellow-500/5 border border-yellow-500/20 rounded-2xl p-4 animate-in slide-in-from-top-2">
                                         <div className="flex items-center gap-2 mb-3 text-yellow-400 font-bold text-sm border-b border-yellow-500/10 pb-2">
@@ -257,7 +374,6 @@ const EntryPage = (props) => {
                                     </div>
                                 )}
                                 
-                                {/* فیلدهای ورودی فرم */}
                                 <div className="space-y-4 pl-1 pr-1">
                                     <div className="flex flex-col"><label className="text-nexus-accent text-xs mb-1 block font-bold">دسته‌بندی قطعه (Component Type)</label>
                                         <div className="relative">
@@ -271,92 +387,25 @@ const EntryPage = (props) => {
                                     </div>
                                     <div className="h-px bg-white/5 my-1"></div>
                                     <div className="flex gap-3">
-                                        <NexusInput 
-                                            label="مقدار (Value) *" 
-                                            value={formData.val} 
-                                            onChange={e=>handleChange('val', e.target.value)} 
-                                            placeholder="مثلا 100" 
-                                            className="flex-1" 
-                                            disabled={!serverStatus} 
-                                            dir="rtl"
-                                            error={errors.val} 
-                                        />
-                                        {isVisible('units') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('units', 'واحد')} 
-                                                options={currentConfig.units} 
-                                                value={formData.unit} 
-                                                onChange={(val)=>handleChange('unit', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.unit} 
-                                            />
-                                        )}
+                                        <NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} dir="rtl" error={errors.val} />
+                                        {isVisible('units') && ( <SearchableDropdown label={getLabel('units', 'واحد')} options={currentConfig.units} value={formData.unit} onChange={(val)=>handleChange('unit', val)} disabled={!serverStatus} error={errors.unit} /> )}
                                     </div>
                                     <div className="flex gap-3">
-                                        {isVisible('paramOptions') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('paramOptions', currentConfig.paramLabel)} 
-                                                options={currentConfig.paramOptions} 
-                                                value={formData.watt} 
-                                                onChange={(val)=>handleChange('watt', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.watt} 
-                                            />
-                                        )}
-                                        {isVisible('tolerances') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('tolerances', 'تولرانس')} 
-                                                options={currentConfig.tolerances || []} 
-                                                value={formData.tol} 
-                                                onChange={(val) => handleChange('tol', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.tol} 
-                                            />
-                                        )}
+                                        {isVisible('paramOptions') && ( <SearchableDropdown label={getLabel('paramOptions', currentConfig.paramLabel)} options={currentConfig.paramOptions} value={formData.watt} onChange={(val)=>handleChange('watt', val)} disabled={!serverStatus} error={errors.watt} /> )}
+                                        {isVisible('tolerances') && ( <SearchableDropdown label={getLabel('tolerances', 'تولرانس')} options={currentConfig.tolerances || []} value={formData.tol} onChange={(val) => handleChange('tol', val)} disabled={!serverStatus} error={errors.tol} /> )}
                                     </div>
                                     <div className="flex gap-3">
-                                        {isVisible('packages') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('packages', 'پکیج (Package)')} 
-                                                options={currentConfig.packages} 
-                                                value={formData.pkg} 
-                                                onChange={(val)=>handleChange('pkg', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.pkg} 
-                                            />
-                                        )}
-                                        {isVisible('techs') && (
-                                            <SearchableDropdown 
-                                                label={getLabel('techs', 'تکنولوژی/نوع دقیق')} 
-                                                options={currentConfig.techs} 
-                                                value={formData.tech} 
-                                                onChange={(val)=>handleChange('tech', val)} 
-                                                disabled={!serverStatus}
-                                                error={errors.tech} 
-                                            />
-                                        )}
+                                        {isVisible('packages') && ( <SearchableDropdown label={getLabel('packages', 'پکیج (Package)')} options={currentConfig.packages} value={formData.pkg} onChange={(val)=>handleChange('pkg', val)} disabled={!serverStatus} error={errors.pkg} /> )}
+                                        {isVisible('techs') && ( <SearchableDropdown label={getLabel('techs', 'تکنولوژی/نوع دقیق')} options={currentConfig.techs} value={formData.tech} onChange={(val)=>handleChange('tech', val)} disabled={!serverStatus} error={errors.tech} /> )}
                                     </div>
                                     
-                                    {/* رندر داینامیک فیلدهای اضافه (list5 تا list10) */}
                                     <div className="grid grid-cols-2 gap-3 mt-3">
                                         {DYNAMIC_FIELDS_MAP.filter(f => f.key.startsWith('list')).map(field => {
                                             const fConfig = currentConfig.fields?.[field.key];
                                             if (fConfig?.visible === false) return null;
-                                            
                                             const options = currentConfig[field.key] || [];
                                             const label = getLabel(field.key, field.label);
-                                               
-                                            return (
-                                                <NexusSelect 
-                                                    key={field.key}
-                                                    label={label} 
-                                                    value={formData[field.stateKey]} 
-                                                    options={options}
-                                                    onChange={e => handleChange(field.stateKey, e.target.value)} 
-                                                    disabled={!serverStatus} 
-                                                    error={errors[field.stateKey]}
-                                                />
-                                            );
+                                            return ( <NexusSelect key={field.key} label={label} value={formData[field.stateKey]} options={options} onChange={e => handleChange(field.stateKey, e.target.value)} disabled={!serverStatus} error={errors[field.stateKey]} /> );
                                         })}
                                     </div>
                                     
@@ -380,19 +429,11 @@ const EntryPage = (props) => {
                                     </div>
                                     <NexusInput label="پروژه / دلیل خرید" value={formData.reason} onChange={e=>handleChange('reason', e.target.value)} disabled={!serverStatus} />
                                     
-                                    {/* بخش افزودن لینک‌ها */}
                                     <div className="bg-white/5 p-3 rounded-xl border border-white/5">
                                         <label className="text-nexus-accent text-xs mb-2 block font-bold">لینک‌های خرید (اختیاری - حداکثر ۵ مورد)</label>
                                         <div className="flex gap-2 mb-2">
-                                            <input 
-                                                className="nexus-input flex-1 px-3 py-2 text-xs ltr placeholder-gray-600" 
-                                                placeholder="https://..." 
-                                                value={linkInput} 
-                                                onChange={e => setLinkInput(e.target.value)} 
-                                            />
-                                            <button onClick={handleAddLink} className="bg-nexus-primary hover:bg-indigo-600 text-white p-2 rounded-lg transition disabled:opacity-50" disabled={formData.purchase_links.length >= 5}>
-                                                <i data-lucide="plus" className="w-4 h-4"></i>
-                                            </button>
+                                            <input className="nexus-input flex-1 px-3 py-2 text-xs ltr placeholder-gray-600" placeholder="https://..." value={linkInput} onChange={e => setLinkInput(e.target.value)} />
+                                            <button onClick={handleAddLink} className="bg-nexus-primary hover:bg-indigo-600 text-white p-2 rounded-lg transition disabled:opacity-50" disabled={formData.purchase_links.length >= 5}><i data-lucide="plus" className="w-4 h-4"></i></button>
                                         </div>
                                         <div className="space-y-1.5">
                                             {formData.purchase_links.map((link, idx) => (
@@ -403,7 +444,6 @@ const EntryPage = (props) => {
                                             ))}
                                         </div>
                                     </div>
-
                                 </div>
                                 <div className="mt-6 pt-4 border-t border-white/5"><button onClick={handleSubmit} disabled={!serverStatus} className={`w-full h-11 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${formData.id ? 'bg-gradient-to-r from-orange-500 to-amber-600' : 'bg-gradient-to-r from-nexus-primary to-purple-600'} disabled:opacity-50`}>{serverStatus ? (formData.id ? 'ذخیره تغییرات' : 'ذخیره در انبار') : 'سرور قطع است'}</button></div>
                             </div>
@@ -415,7 +455,4 @@ const EntryPage = (props) => {
     );
 };
 
-// ----------------------------------------------------------------------------------------------------
-// [تگ: اتصال به فضای جهانی]
-// ----------------------------------------------------------------------------------------------------
 window.EntryPage = EntryPage;

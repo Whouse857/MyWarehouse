@@ -1,16 +1,12 @@
 /* ====================================================================================================
-نسخه: 0.20
+نسخه: 0.26
 فایل: EntryPage.css
-توضیحات: فایل استایل‌های اختصاصی صفحه Entry Page.
-توجه: با توجه به استفاده گسترده از Tailwind CSS در فایل JSX، اکثر استایل‌ها به صورت کلاس‌های Utility
-در فایل View باقی مانده‌اند تا ظاهر برنامه "بدون هیچ تغییری" حفظ شود.
-این فایل شامل استایل‌های پایه و انیمیشن‌های سفارشی می‌باشد.
+توضیحات: استایل‌های نوار فیلترهای فعال + سیستم فیلتر پیشرفته چند شرطی (Query Builder).
 ====================================================================================================
 */
 
 /* نگهدارنده اصلی صفحه */
 .entry-page-container {
-    /* معادل: flex-1 flex flex-col min-w-0 h-full relative */
     flex: 1 1 0%;
     display: flex;
     flex-direction: column;
@@ -19,41 +15,182 @@
     position: relative;
 }
 
-/* انیمیشن برای پنل‌های شیشه‌ای و مودال‌ها */
+/* انیمیشن‌ها */
 @keyframes scale-in {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 .animate-scale-in {
     animation: scale-in 0.2s ease-out forwards;
 }
 
-/* استایل کلاس glass-panel (جهت اطمینان از وجود در صورت عدم تعریف سراسری) */
-/* نکته: اگر این کلاس در فایل‌های سراسری پروژه تعریف شده باشد، این بخش نادیده گرفته می‌شود */
-.glass-panel-custom {
-    background: rgba(255, 255, 255, 0.05); /* white/5 */
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+/* استایل اسکرول بار سفارشی */
+.custom-scroll::-webkit-scrollbar { width: 6px; }
+.custom-scroll::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.1); }
+.custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+.custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+
+/* --- استایل‌های دکمه و پاپ‌آپ فیلتر --- */
+.filter-icon-btn {
+    opacity: 0.5;
+    transition: all 0.2s;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+}
+.filter-icon-btn:hover, .filter-icon-btn.active {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #6366f1;
+}
+.filter-icon-btn.has-value {
+    color: #0ea5e9;
+    opacity: 1;
 }
 
-/* استایل اسکرول بار سفارشی */
-.custom-scroll::-webkit-scrollbar {
-    width: 6px;
+.filter-popup {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 50;
+    width: 300px; /* کمی عریض‌تر برای شرط‌های پیچیده */
+    margin-top: 8px;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    padding: 12px;
+    animation: scale-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.custom-scroll::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.1);
+.filter-popup::before {
+    content: '';
+    position: absolute;
+    top: -5px;
+    right: 12px;
+    width: 10px;
+    height: 10px;
+    background: inherit;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    transform: rotate(45deg);
 }
-.custom-scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
+
+/* --- استایل‌های جدید: سیستم فیلتر پیشرفته (Query Builder) --- */
+.condition-row {
+    position: relative;
+    margin-bottom: 8px;
+    animation: scale-in 0.2s;
 }
-.custom-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
+
+/* خط اتصال بین شرط‌ها */
+.condition-connector {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 4px 0;
+    position: relative;
 }
+.condition-connector::before {
+    content: '';
+    position: absolute;
+    height: 100%;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    z-index: 0;
+}
+
+/* دکمه AND/OR */
+.logic-btn {
+    position: relative;
+    z-index: 1;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid;
+}
+.logic-btn.and {
+    background: rgba(16, 185, 129, 0.1); /* Emerald tint */
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #34d399;
+}
+.logic-btn.or {
+    background: rgba(245, 158, 11, 0.1); /* Amber tint */
+    border-color: rgba(245, 158, 11, 0.3);
+    color: #fbbf24;
+}
+.logic-btn:hover {
+    transform: scale(1.05);
+    filter: brightness(1.2);
+}
+
+/* دکمه حذف سطر */
+.remove-condition-btn {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, 0.3);
+    transition: color 0.2s;
+}
+.remove-condition-btn:hover {
+    color: #ef4444;
+}
+
+/* دکمه افزودن شرط جدید */
+.add-condition-btn {
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.02);
+    color: #94a3b8;
+    font-size: 11px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.add-condition-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: white;
+}
+
+/* --- استایل‌های چیپ‌های فیلتر فعال (Active Chips) --- */
+.active-filters-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    min-height: 40px;
+    align-items: center;
+}
+
+.filter-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    color: #e2e8f0;
+    font-size: 11px;
+    font-weight: bold;
+    animation: scale-in 0.15s;
+}
+.filter-chip span.label { color: #818cf8; }
+.filter-chip button {
+    display: flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1); cursor: pointer; transition: all 0.2s;
+}
+.filter-chip button:hover { background: rgba(239, 68, 68, 0.8); color: white; }
