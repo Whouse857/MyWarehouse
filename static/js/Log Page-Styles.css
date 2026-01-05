@@ -1,0 +1,62 @@
+/* ====================================================================================================
+  فایل: log page-styles.css
+  نسخه: 0.25 (استایل‌های اختصاصی صفحه لاگ)
+  توضیحات: این فایل شامل انیمیشن‌ها و استایل‌های خاص برای مودال‌ها و لیست‌های صفحه تاریخچه است.
+==================================================================================================== 
+*/
+
+/* انیمیشن باز شدن مودال و پاپ‌آپ */
+@keyframes scale-in {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.animate-scale-in {
+    animation: scale-in 0.2s ease-out forwards;
+}
+
+/* انیمیشن ظاهر شدن منوها */
+.animate-in {
+    animation-duration: 0.2s;
+    animation-fill-mode: forwards;
+    animation-timing-function: ease-out;
+}
+
+.fade-in {
+    animation-name: fadeIn;
+}
+
+.zoom-in-95 {
+    animation-name: zoomIn95;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes zoomIn95 {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* اسکرول‌بار سفارشی برای لیست لاگ‌ها */
+.custom-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* پنل شیشه‌ای برای مودال‌ها */
+.glass-panel {
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(10px);
+}
