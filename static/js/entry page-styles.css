@@ -1,0 +1,59 @@
+/* ====================================================================================================
+نسخه: 0.20
+فایل: EntryPage.css
+توضیحات: فایل استایل‌های اختصاصی صفحه Entry Page.
+توجه: با توجه به استفاده گسترده از Tailwind CSS در فایل JSX، اکثر استایل‌ها به صورت کلاس‌های Utility
+در فایل View باقی مانده‌اند تا ظاهر برنامه "بدون هیچ تغییری" حفظ شود.
+این فایل شامل استایل‌های پایه و انیمیشن‌های سفارشی می‌باشد.
+====================================================================================================
+*/
+
+/* نگهدارنده اصلی صفحه */
+.entry-page-container {
+    /* معادل: flex-1 flex flex-col min-w-0 h-full relative */
+    flex: 1 1 0%;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+    position: relative;
+}
+
+/* انیمیشن برای پنل‌های شیشه‌ای و مودال‌ها */
+@keyframes scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.animate-scale-in {
+    animation: scale-in 0.2s ease-out forwards;
+}
+
+/* استایل کلاس glass-panel (جهت اطمینان از وجود در صورت عدم تعریف سراسری) */
+/* نکته: اگر این کلاس در فایل‌های سراسری پروژه تعریف شده باشد، این بخش نادیده گرفته می‌شود */
+.glass-panel-custom {
+    background: rgba(255, 255, 255, 0.05); /* white/5 */
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* استایل اسکرول بار سفارشی */
+.custom-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}

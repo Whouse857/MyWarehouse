@@ -1,64 +1,20 @@
 // ====================================================================================================
-// نسخه: 0.20
-// فایل: Entry Page.js
-// تهیه کننده: ------
-//
-// توضیحات کلی ماژول:
-// این فایل یکی از مهم‌ترین صفحات برنامه است که وظیفه "ثبت ورود کالا" و "مدیریت موجودی" را بر عهده دارد.
-// 
-// قابلیت‌های اصلی:
-// ۱. فرم ثبت قطعه جدید با فیلدهای داینامیک (بر اساس تنظیمات ادمین).
-// ۲. لیست قطعات موجود با قابلیت جستجو و فیلتر پیشرفته.
-// ۳. شناسایی هوشمند قطعات تکراری برای جلوگیری از ثبت مجدد.
-// ۴. ویرایش و حذف قطعات موجود.
-// ۵. تولید کد اختصاصی ۱۲ رقمی برای هر قطعه.
-// ۶. محاسبه قیمت‌ها (ریالی و دلاری) و مدیریت لینک‌های خرید.
+// نسخه: 0.22
+// فایل: EntryPage.jsx
+// توضیحات: فایل نمایش (View) که وظیفه رندر کردن رابط کاربری را بر عهده دارد.
+// اصلاحات: 
+// 1. هوشمندسازی فیلترها: فیلترها فقط زمانی نمایش داده می‌شوند که فیلد مربوطه فعال باشد.
+// 2. تغییر لی‌اوت نوار جستجو به Flex برای پر کردن فضای خالی در صورت حذف شدن یک فیلتر.
 // ====================================================================================================
 
-// ----------------------------------------------------------------------------------------------------
-// [تگ: نگاشت فیلدهای پویا]
-// این آرایه ثابت، ارتباط بین تنظیمات ذخیره شده در دیتابیس (تنظیمات ادمین)
-// و نام متغیرها در فرم ورود اطلاعات (formData) را برقرار می‌کند.
-// اگر در آینده فیلدی اضافه شود، باید اینجا تعریف گردد.
-// ----------------------------------------------------------------------------------------------------
-const DYNAMIC_FIELDS_MAP = [
-    { key: 'units', stateKey: 'unit', label: 'واحد' },
-    { key: 'tolerances', stateKey: 'tol', label: 'تولرانس' },
-    { key: 'paramOptions', stateKey: 'watt', label: 'پارامتر فنی' }, // مثلا وات برای مقاومت
-    { key: 'packages', stateKey: 'pkg', label: 'پکیج' },
-    { key: 'techs', stateKey: 'tech', label: 'تکنولوژی' },
-    // فیلدهای توسعه یافته (رزرو شده برای آینده)
-    { key: 'list5', stateKey: 'list5', label: 'فیلد ۵' },
-    { key: 'list6', stateKey: 'list6', label: 'فیلد ۶' },
-    { key: 'list7', stateKey: 'list7', label: 'فیلد ۷' },
-    { key: 'list8', stateKey: 'list8', label: 'فیلد ۸' },
-    { key: 'list9', stateKey: 'list9', label: 'فیلد ۹' },
-    { key: 'list10', stateKey: 'list10', label: 'فیلد ۱۰' },
-];
+// دریافت React و Hook ها از فضای جهانی
+const { useState, useEffect, useRef } = React;
 
-
-// ----------------------------------------------------------------------------------------------------
-// [تگ: تولید کد قطعه]
-// این تابع یک کد یکتا (UID) برای قطعه تولید می‌کند.
-// ساختار کد: [پیشوند ۳ حرفی][شناسه ۹ رقمی] (مثال: RES000000123)
-// ----------------------------------------------------------------------------------------------------
-const getPartCode = (p, globalConfig) => {
-    // اگر کد از قبل در دیتابیس ذخیره شده، همان را نشان بده
-    if (p && p.part_code) return p.part_code; 
-    
-    // اگر قطعه جدید است و هنوز ID ندارد (هنوز در دیتابیس ثبت نشده)
-    if (!p || !p.id) return "---";
-    
-    // دریافت پیشوند از تنظیمات (مثلاً RES برای مقاومت) یا استفاده از پیش‌فرض PRT
-    const prefix = (globalConfig && globalConfig[p.type]?.prefix) || "PRT";
-    // تبدیل ID به رشته ۹ رقمی با صفرهای ابتدایی
-    const numeric = String(p.id).padStart(9, '0');
-    return `${prefix}${numeric}`;
-};
+// دریافت توابع منطقی که در فایل entry page-logic.js به window متصل شدند
+const { useEntryPageLogic, getPartCode, DYNAMIC_FIELDS_MAP } = window;
 
 // ----------------------------------------------------------------------------------------------------
 // [تگ: کامپوننت مودال خلاصه وضعیت]
-// پنجره‌ای که قبل از ثبت نهایی نمایش داده می‌شود تا کاربر اطلاعات را بازبینی کند.
 // ----------------------------------------------------------------------------------------------------
 const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     if (!isOpen) return null;
@@ -76,7 +32,8 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
                     {/* نمایش جزئیات ثبت شده */}
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>نوع:</span> <span className="text-white font-bold">{data.type}</span></div>
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>مقدار:</span> <span className="text-white font-bold ltr font-mono">{data.val} {data.unit}</span></div>
-                    <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>پکیج:</span> <span className="text-white font-bold">{data.pkg}</span></div>
+                    {/* نمایش شرطی پکیج در خلاصه وضعیت */}
+                    {data.pkg && <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>پکیج:</span> <span className="text-white font-bold">{data.pkg}</span></div>}
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>تعداد:</span> <span className="text-emerald-400 font-bold ltr font-mono">{data.qty}</span></div>
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>قیمت کل:</span> <span className="text-amber-400 font-bold ltr font-mono">{data.price_toman} تومان</span></div>
                     <div className="flex justify-between items-center border-b border-white/5 pb-2"><span>فروشنده:</span> <span className="text-blue-300 font-bold">{data.vendor_name}</span></div>
@@ -91,14 +48,8 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
     );
 };
 
-
 // ----------------------------------------------------------------------------------------------------
 // [تگ: کامپوننت دراپ‌داون قابل جستجو]
-// جایگزین Select معمولی برای مدیریت لیست‌های طولانی با قابلیت جستجو و اعتبارسنجی سخت‌گیرانه
-// ----------------------------------------------------------------------------------------------------
-// ----------------------------------------------------------------------------------------------------
-// [تگ: کامپوننت دراپ‌داون قابل جستجو]
-// اصلاح شده: اضافه شدن دریافت prop خطا (error) برای قرمز کردن کادر
 // ----------------------------------------------------------------------------------------------------
 const SearchableDropdown = ({ label, value, options, onChange, disabled, placeholder, error }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -173,402 +124,29 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
     );
 };
 
-
 // ----------------------------------------------------------------------------------------------------
 // [تگ: کامپوننت اصلی صفحه ورود]
 // ----------------------------------------------------------------------------------------------------
-const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: وضعیت‌های فرم و داده‌ها]
-    // formData: نگهداری مقادیر تمام فیلدهای ورودی.
-    // partsList: لیست کل قطعات موجود در انبار (دریافتی از سرور).
-    // contacts: لیست مخاطبین/فروشندگان برای پیشنهاد در فیلد فروشنده.
-    // filters: مقادیر فیلترهای جستجو در لیست سمت چپ.
-    // errors: آبجکت نگهداری خطاهای اعتبارسنجی (Validation).
-    // showSummary: کنترل نمایش مودال پیش‌نمایش.
-    // linkInput: متغیر موقت برای اینپوت افزودن لینک خرید.
-    // ------------------------------------------------------------------------------------------------
-    const [formData, setFormData] = useState({ 
-    id: null, val: "", unit: "", watt: "", tol: "", pkg: "", type: "Resistor", 
-    date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", 
-    min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [], 
-    invoice_number: "",
-    // مقادیر اولیه فیلدهای جدید
-    list5: "", list6: "", list7: "", list8: "", list9: "", list10: ""
-    });
-    const [partsList, setPartsList] = useState([]);
-    const [contacts, setContacts] = useState([]);
-    const [filters, setFilters] = useState({ val: '', pkg: '', loc: '', type: '', code: '' });
-    const [errors, setErrors] = useState({});
-    const [showSummary, setShowSummary] = useState(false);
-    const [linkInput, setLinkInput] = useState(""); 
-    
-    // هوک‌های اعلان و دیالوگ
-    const notify = useNotify();
-    const dialog = useDialog();
-    
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: بارگذاری اطلاعات]
-    // دریافت لیست قطعات و لیست مخاطبین از API هنگام لود صفحه.
-    // ------------------------------------------------------------------------------------------------
-    const loadData = useCallback(async () => { 
-        try { 
-            const [partsRes, contactsRes] = await Promise.all([fetchAPI('/parts'), fetchAPI('/contacts')]);
-            if(partsRes.ok) setPartsList(Array.isArray(partsRes.data) ? partsRes.data : []);
-            if(contactsRes.ok) setContacts(Array.isArray(contactsRes.data) ? contactsRes.data : []);
-        } catch(e){} 
-    }, []);
-    
-    useEffect(() => { loadData(); }, [loadData]);
+const EntryPage = (props) => {
+    // دریافت لاجیک از هوک سفارشی
+    const logic = useEntryPageLogic(props);
+    const { 
+        formData, setFormData, partsList, filters, setFilters, errors, 
+        showSummary, setShowSummary, linkInput, setLinkInput,
+        duplicates, filteredParts, vendorOptions, locationOptions, currentConfig,
+        handleChange, preventNonNumeric, handleAddLink, handleRemoveLink,
+        handleSubmit, handleFinalSubmit, handleEdit, handleDelete, getLabel, isVisible
+    } = logic;
 
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: تشخیص تکراری]
-    // این هوک بررسی می‌کند آیا قطعه‌ای با مشخصات وارد شده (نوع، مقدار، پکیج) قبلاً ثبت شده است یا خیر.
-    // اگر موردی پیدا شود، در لیست هشدارهای زرد رنگ نمایش داده می‌شود.
-    // ------------------------------------------------------------------------------------------------
-    const duplicates = useMemo(() => {
-        if (!formData.val || !formData.type) {
-            return [];
-        }
-        const clean = (str) => String(str || '').toLowerCase().replace(/\s+/g, '');
-        const formFullVal = clean(formData.val + (formData.unit && formData.unit !== '-' ? formData.unit : ''));
-        
-        return partsList.filter(p => {
-            if (formData.id && p.id === formData.id) return false; // خود قطعه در حال ویرایش را نادیده بگیر
-            const pType = clean(p.type);
-            const pVal = clean(p.val);
-            const matchType = pType === clean(formData.type);
-            const matchVal = pVal === formFullVal;
-            if (!matchType || !matchVal) return false;
-            if (formData.pkg && p.package) {
-                if (clean(p.package) !== clean(formData.pkg)) return false;
-            }
-            return true;
-        });
-    }, [formData.val, formData.unit, formData.pkg, formData.type, partsList, formData.id]);
-
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: فیلتر کردن لیست]
-    // اعمال فیلترهای جستجو (نوع، مقدار، پکیج، آدرس، کد) روی لیست قطعات سمت چپ.
-    // ------------------------------------------------------------------------------------------------
-    const filteredParts = useMemo(() => {
-        const normalize = (s) => s ? String(s).toLowerCase().replace(/,/g, '').trim() : '';
-        const activeCategory = normalize(formData.type);
-        const filterVal = normalize(filters.val);
-        const filterPkg = normalize(filters.pkg);
-        const filterLoc = normalize(filters.loc);
-        const filterType = normalize(filters.type);
-        const filterCode = normalize(filters.code);
-
-        if (!Array.isArray(partsList)) return [];
-
-        return partsList.filter(p => {
-            if (!p) return false;
-            const pVal = normalize(p.val);
-            const pPkg = normalize(p.package);
-            const pLoc = normalize(p.storage_location);
-            const pType = normalize(p.type);
-            const pCode = normalize(getPartCode(p, globalConfig));
-            
-            // فیلتر اصلی: فقط قطعات هم‌نوع با دسته‌بندی انتخاب شده در فرم نمایش داده شوند
-            if (activeCategory && pType !== activeCategory) return false;
-            
-            // اعمال فیلترهای کاربر
-            if (filterVal && !pVal.includes(filterVal)) return false;
-            if (filterPkg && !pPkg.includes(filterPkg)) return false;
-            if (filterLoc && !pLoc.includes(filterLoc)) return false;
-            if (filterType && !pType.includes(filterType)) return false;
-            if (filterCode && !pCode.includes(filterCode)) return false;
-            return true;
-        });
-    }, [partsList, filters, formData.type, globalConfig]);
-
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: گزینه‌های داینامیک]
-    // ساخت لیست پیشنهادی برای فیلد فروشنده و آدرس انبار.
-    // ------------------------------------------------------------------------------------------------
-    const vendorOptions = useMemo(() => {
-        const names = contacts.map(c => c.name);
-        // اگر نام وارد شده در لیست نیست، موقتاً به گزینه‌ها اضافه شود
-        if (formData.vendor_name && !names.includes(formData.vendor_name)) names.push(formData.vendor_name);
-        return names;
-    }, [contacts, formData.vendor_name]);
-
-    const locationOptions = useMemo(() => {
-        const generalConfig = globalConfig?.["General"];
-        const rawLocs = generalConfig?.locations;
-        const sharedLocs = Array.isArray(rawLocs) ? [...rawLocs] : [];
-        if (formData.location && !sharedLocs.includes(formData.location)) sharedLocs.push(formData.location);
-        return sharedLocs;
-    }, [globalConfig, formData.location]);
-
-    // بروزرسانی آیکون‌ها
-    useLucide([filteredParts.length, formData.type, duplicates.length, formData.purchase_links.length]); 
-
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: مدیریت تغییرات فرم]
-    // تابع اصلی برای آپدیت استیت formData هنگام تایپ کاربر.
-    // شامل منطق فرمت‌بندی اعداد (حذف کاما و محدودیت کاراکتر غیر عددی).
-    // ------------------------------------------------------------------------------------------------
-    const handleChange = useCallback((key, val) => {
-        let v = val;
-        // تغییر جدید: جلوگیری از ورود کاراکترهای غیر عددی برای تعداد
-        if (key === 'qty' || key === 'min_qty') {
-            v = val.replace(/[^0-9]/g, '');
-        }
-        // فرمت‌بندی ۳ رقم ۳ رقم برای قیمت‌ها
-        else if (key === 'price_toman' || key === 'usd_rate') {
-            v = formatNumberWithCommas(val.replace(/,/g, ''));
-        }
-        
-        // پاک کردن خطا برای فیلد تغییر یافته
-        setErrors(prev => ({...prev, [key]: false}));
-        
-        // اگر نوع قطعه تغییر کرد، واحد و مقادیر وابسته ریست شوند
-        if (key === 'type') {
-            const newConfig = globalConfig?.[val] ? globalConfig[val] : (globalConfig?.["Resistor"] || {});
-            const defaultUnit = (newConfig.units && newConfig.units.length > 0) ? newConfig.units[0] : "";
-            setFormData(prev => ({ ...prev, [key]: v, unit: defaultUnit, watt: "", pkg: "", tech: "" }));
-        } else {
-            setFormData(prev => ({ ...prev, [key]: v }));
-        }
-    }, [globalConfig]);
-    
-    // تابع کمکی برای جلوگیری از تایپ حروف در فیلدهای عددی
-    const preventNonNumeric = (e) => {
-        if (!/[0-9]/.test(e.key) && e.key !== "Backspace" && e.key !== "Delete" && e.key !== "ArrowLeft" && e.key !== "ArrowRight") { e.preventDefault(); }
-    };
-
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: مدیریت لینک‌ها]
-    // افزودن و حذف لینک‌های خرید (حداکثر ۵ لینک).
-    // ------------------------------------------------------------------------------------------------
-    const handleAddLink = () => {
-        if (!linkInput.trim()) return;
-        if (formData.purchase_links.length >= 5) {
-            notify.show('محدودیت', 'حداکثر ۵ لینک می‌توانید اضافه کنید.', 'warning');
-            return;
-        }
-        setFormData(prev => ({
-            ...prev,
-            purchase_links: [...prev.purchase_links, linkInput.trim()]
-        }));
-        setLinkInput("");
-    };
-
-    const handleRemoveLink = (index) => {
-        setFormData(prev => ({
-            ...prev,
-            purchase_links: prev.purchase_links.filter((_, i) => i !== index)
-        }));
-    };
-
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: اعتبارسنجی فرم]
-    // بررسی صحت اطلاعات قبل از ارسال به سرور.
-    // این بخش هم فیلدهای ثابت (مثل قیمت) و هم فیلدهای داینامیک (بر اساس تنظیمات ادمین) را چک می‌کند.
-    // ------------------------------------------------------------------------------------------------
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: اعتبارسنجی فرم]
-    // اصلاح شده: افزودن بررسی الزامی بودن حداقل موجودی و قیمت دلار
-    // ------------------------------------------------------------------------------------------------
-    const handleSubmit = () => {
-        const newErrors = {};
-        const typeConfig = globalConfig?.[formData.type] || {}; 
-
-        // 1. بررسی فیلدهای ثابت همیشگی
-        if(!formData.val) newErrors.val = true;
-        
-        // بررسی تعداد (qty)
-        if(formData.qty === "" || Number(formData.qty) < 0) newErrors.qty = true;
-        
-        // --- تغییرات جدید: بررسی حداقل و قیمت دلار ---
-        // بررسی حداقل موجودی (min_qty)
-        if(formData.min_qty === "" || Number(formData.min_qty) < 0) newErrors.min_qty = true;
-
-        // بررسی قیمت دلار (usd_rate)
-        if(!formData.usd_rate) newErrors.usd_rate = true;
-        // ---------------------------------------------
-
-        // بررسی الزامی بودن آدرس از تنظیمات General
-        const locSetting = globalConfig?.["General"]?.fields?.['locations'];
-        const isLocRequired = locSetting ? locSetting.required : true; // اگر تنظیم نشده بود، پیش‌فرض الزامی است
-        if(isLocRequired && !formData.location) newErrors.location = true;
-        
-        if(!formData.price_toman) newErrors.price_toman = true;
-        // اگر وندور الزامی است:
-        if(!formData.vendor_name) newErrors.vendor_name = true;
-
-        // 2. بررسی هوشمند فیلدهای داینامیک با توجه به تنظیمات ادمین
-        DYNAMIC_FIELDS_MAP.forEach(field => {
-            const fieldConfig = typeConfig.fields?.[field.key];
-            
-            // منطق پیش‌فرض (اگر ادمین هنوز تنظیم نکرده باشد، ۴ تای اصلی نمایش داده می‌شوند)
-            const isDefaultVisible = ['units','paramOptions','packages','techs'].includes(field.key);
-            const isVisible = fieldConfig ? fieldConfig.visible : isDefaultVisible;
-            
-            // منطق الزامی بودن
-            const isDefaultRequired = ['units','packages'].includes(field.key);
-            const isRequired = fieldConfig ? fieldConfig.required : isDefaultRequired;
-
-            if (isVisible && isRequired) {
-                if (!formData[field.stateKey]) newErrors[field.stateKey] = true;
-            }
-        });
-
-        if (Object.keys(newErrors).length > 0) {
-            setErrors(newErrors);
-            notify.show('خطای اعتبارسنجی', 'لطفاً فیلدهای ستاره‌دار (الزامی) را پر کنید.', 'error');
-            return;
-        }
-        setShowSummary(true);
-    };
-
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: ثبت نهایی]
-    // ارسال داده‌ها به سرور پس از تایید در مودال خلاصه وضعیت.
-    // ------------------------------------------------------------------------------------------------
-    const handleFinalSubmit = async () => {
-        let fullVal = formData.val;
-        if(formData.unit && formData.unit !== "-") fullVal += formData.unit;
-
-        // آماده‌سازی پیلود برای ارسال (حذف کاما از قیمت‌ها و ...)
-        const payload = { ...formData, val: fullVal, qty: Number(formData.qty) || 0, min_qty: Number(formData.min_qty) || 1, price: String(formData.price_toman).replace(/,/g, ''), usd_rate: String(formData.usd_rate).replace(/,/g, ''), username: user.username , invoice_number: formData.invoice_number};
-        try { 
-            const { ok, data } = await fetchAPI('/save', { method: 'POST', body: payload });
-            if (ok) { 
-                loadData(); 
-                const typeConfig = globalConfig?.[formData.type] || globalConfig?.["Resistor"] || {};
-                const defUnit = (typeConfig.units && typeConfig.units[0]) || "";
-                
-                // ریست کردن فرم پس از ثبت موفق
-                setFormData({ 
-                    id: null, val: "", unit: defUnit, watt: "", tol: "", pkg: "", type: formData.type, 
-                    date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", 
-                    min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [],
-                    list5: "", list6: "", list7: "", list8: "", list9: "", list10: "" 
-                });
-                notify.show('موفقیت', 'قطعه با موفقیت در انبار ذخیره شد.', 'success');
-                setShowSummary(false);
-            } else {
-                 notify.show('خطا', data.error || 'خطا در ذخیره اطلاعات', 'error');
-            }
-        } catch(e) { notify.show('خطای سرور', 'خطا در برقراری ارتباط با سرور.', 'error'); }
-    };
-    
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: ویرایش قطعه]
-    // پر کردن فرم با اطلاعات یک قطعه انتخاب شده از لیست جهت ویرایش.
-    // شامل منطق تفکیک مقدار از واحد (مثلا 100uF -> val: 100, unit: uF).
-    // ------------------------------------------------------------------------------------------------
-    const handleEdit = (p) => {
-        let category = p.type || "Resistor"; 
-        // منطق تشخیص دسته در صورت عدم وجود (مربوط به دیتای قدیمی)
-        if (!globalConfig?.[category]) {
-            if (p.val.includes("F")) category = "Capacitor";
-            else if (p.val.includes("H")) category = "Inductor";
-            else category = "Resistor";
-        }
-        const config = globalConfig?.[category] ? globalConfig[category] : (globalConfig?.["Resistor"] || {});
-        
-        // تفکیک هوشمند واحد از مقدار
-        let u = (config.units && config.units.length > 0) ? config.units[0] : "";
-        let v = p.val || "";
-        if (config.units) {
-            for (let unit of config.units) {
-                if (v.endsWith(unit)) { u = unit; v = v.slice(0, -unit.length); break; }
-            }
-        }
-        
-        let links = [];
-        try {
-            if (p.purchase_links) {
-                links = JSON.parse(p.purchase_links);
-                if (!Array.isArray(links)) links = [];
-            }
-        } catch (e) { links = []; }
-
-        setFormData({ 
-        ...p, 
-        val: v, 
-        unit: u, 
-        tol: p.tolerance, 
-        pkg: p.package, 
-        type: category, 
-        tech: p.tech || "", 
-        watt: p.watt, 
-        date: p.buy_date, 
-        qty: (p.quantity === null || p.quantity === undefined) ? "" : p.quantity, 
-        price_toman: formatNumberWithCommas(p.toman_price), 
-        usd_rate: formatNumberWithCommas(p.usd_rate || ""), 
-        min_qty: (p.min_quantity === null || p.min_quantity === undefined) ? "" : p.min_quantity, 
-        location: p.storage_location || "", 
-        purchase_links: links, 
-        invoice_number: p.invoice_number, 
-        part_code: p.part_code,
-        // بازگردانی مقادیر فیلدهای اضافی
-        list5: p.list5 || "", list6: p.list6 || "", list7: p.list7 || "", 
-        list8: p.list8 || "", list9: p.list9 || "", list10: p.list10 || ""
-        });
-        setErrors({});
-    };
-    
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: حذف قطعه - اصلاح شده]
-    // حذف قطعه با ارسال نام کاربر جهت ثبت در لاگ تاریخچه
-    // ------------------------------------------------------------------------------------------------
-    const handleDelete = async (id) => { 
-        const confirmed = await dialog.ask("حذف قطعه", "آیا از حذف این قطعه از انبار اطمینان دارید؟", "danger");
-        if(confirmed) { 
-            try { 
-                // اصلاح: ارسال username در کوئری استرینگ
-                await fetchAPI(`/delete/${id}?username=${user.username}`, { method: 'DELETE' }); 
-                loadData(); 
-                notify.show('حذف شد', 'قطعه با موفقیت حذف شد و در تاریخچه ثبت گردید.', 'success'); 
-            } catch(e) {
-                notify.show('خطا', 'مشکل در حذف قطعه', 'error');
-            } 
-        } 
-    };
-
-    // تنظیمات دسته جاری (انتخاب شده در دراپ‌داون)
-    const currentConfig = (globalConfig?.[formData.type]) ? globalConfig[formData.type] : (globalConfig?.["Resistor"]) || { units: [], paramOptions: [], packages: [], techs: [], icon: 'circle', label: 'Unknown', prefix: 'PRT' };
-
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: توابع کمکی رندر]
-    // getLabel: دریافت نام نمایشی فیلد از تنظیمات ادمین (و افزودن ستاره اگر الزامی باشد).
-    // isVisible: بررسی اینکه آیا فیلد باید طبق تنظیمات نمایش داده شود یا خیر.
-    // ------------------------------------------------------------------------------------------------
-    const getLabel = (key, defaultLabel) => {
-    const isLoc = key === 'location';
-    const targetConfig = isLoc ? globalConfig?.["General"] : currentConfig;
-    const configKey = isLoc ? 'locations' : key;
-
-    const fConfig = targetConfig?.fields?.[configKey];
-    const label = fConfig?.label || defaultLabel;
-    
-    // چک کردن الزامی بودن: یا از تنظیمات ادمین یا موارد پیش‌فرض سیستم
-    const isRequired = fConfig ? fConfig.required : ['units', 'packages', 'location'].includes(key);
-    return label + (isRequired ? " *" : "");
-    };
-
-    const isVisible = (key) => {
-        const fConfig = currentConfig.fields?.[key];
-        // اضافه کردن tolerances به لیست فیلدهای پایه
-        const isBase = ['units', 'paramOptions', 'packages', 'techs', 'tolerances'].includes(key);
-        return fConfig ? fConfig.visible : isBase;
-    };
+    const { serverStatus, globalConfig } = props;
 
     // ------------------------------------------------------------------------------------------------
     // [تگ: رندر رابط کاربری (JSX)]
-    // ساختار اصلی صفحه شامل:
-    // ۱. هدر (نمایش تعداد کل قطعات).
-    // ۲. ستون سمت چپ: لیست قطعات با فیلترها.
-    // ۳. ستون سمت راست: فرم ورود اطلاعات.
     // ------------------------------------------------------------------------------------------------
     return (
         <ErrorBoundary>
-            <div className="flex-1 flex flex-col min-w-0 h-full relative">
+            {/* استفاده از کلاس CSS تعریف شده در EntryPage.css */}
+            <div className="entry-page-container">
                 {/* مودال پیش‌نمایش */}
                 <SummaryModal isOpen={showSummary} onClose={() => setShowSummary(false)} onConfirm={handleFinalSubmit} data={formData} globalConfig={globalConfig} />
                 
@@ -586,12 +164,18 @@ const EntryPage = ({ setView, serverStatus, user, globalConfig }) => {
                         <div className="col-span-12 lg:col-span-8 flex flex-col order-2 lg:order-1">
                             <div className="glass-panel rounded-2xl flex flex-col">
                                 {/* نوار جستجو و فیلترها */}
-                                <div className="p-3 border-b border-white/5 grid grid-cols-5 gap-3 bg-white/5">
-                                    <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="کد 12 رقمی..." value={filters.code} onChange={e => setFilters({...filters, code: e.target.value})} />
-                                    <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="فیلتر مقدار..." value={filters.val} onChange={e => setFilters({...filters, val: e.target.value})} />
-                                    <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="فیلتر پکیج..." value={filters.pkg} onChange={e => setFilters({...filters, pkg: e.target.value})} />
-                                    <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="فیلتر آدرس..." value={filters.loc} onChange={e => setFilters({...filters, loc: e.target.value})} />
-                                    <input className="nexus-input w-full px-2 py-1 text-xs" placeholder="فیلتر نوع..." value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})} />
+                                {/* تغییر: استفاده از Flex و gap-2 برای چیدمان داینامیک */}
+                                <div className="p-3 border-b border-white/5 flex flex-wrap gap-2 bg-white/5">
+                                    <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder="کد 12 رقمی..." value={filters.code} onChange={e => setFilters({...filters, code: e.target.value})} />
+                                    <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder={`فیلتر ${getLabel('val', 'مقدار').replace(' *', '')}...`} value={filters.val} onChange={e => setFilters({...filters, val: e.target.value})} />
+                                    
+                                    {/* نمایش شرطی فیلتر پکیج */}
+                                    {isVisible('packages') && (
+                                        <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder={`فیلتر ${getLabel('packages', 'پکیج').replace(' *', '')}...`} value={filters.pkg} onChange={e => setFilters({...filters, pkg: e.target.value})} />
+                                    )}
+                                    
+                                    <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder={`فیلتر ${getLabel('location', 'آدرس').replace(' *', '')}...`} value={filters.loc} onChange={e => setFilters({...filters, loc: e.target.value})} />
+                                    <input className="nexus-input flex-1 min-w-[100px] px-2 py-1 text-xs" placeholder="فیلتر نوع..." value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})} />
                                 </div>
                                 
                                 {/* هدر لیست */}
