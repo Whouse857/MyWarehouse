@@ -1,0 +1,130 @@
+/* ====================================================================================================
+   فایل: project-bom-styles.css
+   وظیفه: استایل‌های اختصاصی برای صفحه ویرایشگر BOM، جداول، مدال‌ها و حالت پرینت
+   توضیحات: شامل استایل‌های درگ‌ان‌دراپ، بج‌های رنگی مشخصات و تنظیمات چاپ کاغذ
+==================================================================================================== */
+
+/* -------------------------------------------------------------------------------------------------
+   [SECTION 1] استایل‌های درگ اند دراپ (Drag & Drop)
+------------------------------------------------------------------------------------------------- */
+.bom-item-row {
+    transition: all 0.2s ease;
+}
+
+/* وقتی ردیفی در حال کشیده شدن است */
+.bom-item-row.dragging {
+    opacity: 0.5;
+    border: 2px dashed #6366f1; /* رنگ بنفش نکسوس */
+    background: rgba(99, 102, 241, 0.1);
+    transform: scale(0.98);
+}
+
+/* نشانگر موس برای جابجایی */
+.cursor-move {
+    cursor: move; /* Fallback */
+    cursor: grab;
+}
+.cursor-move:active {
+    cursor: grabbing;
+}
+
+/* -------------------------------------------------------------------------------------------------
+   [SECTION 2] بج‌های مشخصات فنی (Spec Badges)
+   توضیح: برای نمایش پکیج، وات و تلرانس قطعات در جدول
+------------------------------------------------------------------------------------------------- */
+.spec-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 700; /* Bold */
+    border: 1px solid transparent;
+    letter-spacing: 0.5px;
+}
+
+.badge-blue { 
+    background: rgba(59, 130, 246, 0.1); 
+    color: #60a5fa; 
+    border-color: rgba(59, 130, 246, 0.1); 
+}
+
+.badge-amber { 
+    background: rgba(245, 158, 11, 0.1); 
+    color: #fbbf24; 
+    border-color: rgba(245, 158, 11, 0.1); 
+}
+
+.badge-purple { 
+    background: rgba(168, 85, 247, 0.1); 
+    color: #c084fc; 
+    border-color: rgba(168, 85, 247, 0.1); 
+}
+
+.badge-emerald { 
+    background: rgba(16, 185, 129, 0.1); 
+    color: #34d399; 
+    border-color: rgba(16, 185, 129, 0.1); 
+}
+
+/* -------------------------------------------------------------------------------------------------
+   [SECTION 3] انیمیشن‌های لیست (List Animations)
+------------------------------------------------------------------------------------------------- */
+@keyframes slide-in {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-in {
+    animation: slide-in 0.3s ease-out forwards;
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* -------------------------------------------------------------------------------------------------
+   [SECTION 4] تنظیمات چاپ (Print Styles)
+   توضیح: این کلاس‌ها فقط زمانی که کاربر دکمه پرینت را می‌زند یا Ctrl+P می‌کند فعال می‌شوند.
+------------------------------------------------------------------------------------------------- */
+@media print {
+    body { 
+        background: white !important; 
+        color: black !important; 
+        font-family: 'Tahoma', sans-serif !important;
+    }
+
+    /* مخفی کردن عناصر اضافی در پرینت */
+    .no-print, 
+    button, 
+    input, 
+    .glass-panel,
+    .sidebar-panel { 
+        display: none !important; 
+    }
+
+    /* تنظیمات جدول برای پرینت */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10pt;
+    }
+    
+    th, td {
+        border: 1px solid #000 !important;
+        padding: 5px;
+        text-align: center;
+        color: #000 !important;
+    }
+
+    /* اطمینان از نمایش پس‌زمینه رنگی در پرینت */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
