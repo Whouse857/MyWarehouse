@@ -1,12 +1,42 @@
 // ====================================================================================================
-// نسخه: 0.23
+// نسخه: 0.28 (نهایی - رابط کاربری کامل با پشتیبانی از اعداد و تاریخ فارسی)
 // فایل: admin management.jsx
 // توضیح: این فایل مسئول نمایش ظاهر (JSX) است و منطق را از هوک دریافت می‌کند.
-// نکته: در این نسخه کامپوننت‌های مودال به صورت داخلی تعریف شده‌اند تا کنترل کامل روی کیبورد داشته باشیم.
 // ====================================================================================================
 
 // اطمینان از دسترسی به React برای پردازش JSX
 const React = window.React;
+
+// ----------------------------------------------------------------------------------------------------
+// [تگ: توابع کمکی فرمت‌دهی]
+// این توابع صرفاً جهت نمایش هستند و داده‌های اصلی را تغییر نمی‌دهند.
+// ----------------------------------------------------------------------------------------------------
+
+const toPersianDigits = (str) => {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+};
+
+const toEnglishDigits = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]) // تبدیل اعداد فارسی
+        .replace(/,/g, ''); // حذف کاما (برای قیمت)
+};
+
+const addCommas = (num) => {
+    if (num === null || num === undefined || num === '') return '';
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+};
+
+// ترکیب توابع برای نمایش قیمت: عدد انگلیسی -> کاما -> عدد فارسی
+const formatPriceDisplay = (val) => {
+    if (!val && val !== 0) return '';
+    // مطمئن شویم ورودی تمیز است
+    const cleanEn = toEnglishDigits(val);
+    const withComma = addCommas(cleanEn);
+    return toPersianDigits(withComma);
+};
 
 // ----------------------------------------------------------------------------------------------------
 // [تگ: کامپوننت‌های کمکی داخلی]
@@ -69,18 +99,19 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
     // فراخوانی هوک منطق برای دریافت داده‌ها و توابع مورد نیاز
     // ------------------------------------------------------------------------------------------------
     const {
-        sortedKeys, selectedType, config, newItems, listLabels, listKeys,
+        sortedKeys, selectedType, config, newItems, listLabels, listKeys, onlineRateData,
         // مودال‌ها و مقادیر
         renameModal, addCategoryModal, deleteCategoryModal, inputValue,
-        deleteItemModal, // اضافه شده
+        deleteItemModal, 
         // توابع
         setSelectedType, setNewItems, setInputValue,
         handleDragStart, handleDragEnter, handleDragEnd,
         handleFieldConfigChange, handleAddItem, handleDeleteItem,
         handleItemDragStart, handleItemDragEnter, handleItemDragEnd,
         handleSave, handleDeleteCategory, handleRenameSubmit, handleAddCategorySubmit, handlePrefixChange,
+        handleManualUsdChange, applyOnlineToManual, // اضافه شده
         openRenameModal, openAddCategoryModal, confirmDeleteCategory, confirmDeleteItem,
-        setRenameModal, setAddCategoryModal, setDeleteCategoryModal, setDeleteItemModal // برای بستن دستی
+        setRenameModal, setAddCategoryModal, setDeleteCategoryModal, setDeleteItemModal 
     } = window.useAdminManagementLogic({ globalConfig, onConfigUpdate });
 
     // ------------------------------------------------------------------------------------------------
@@ -175,6 +206,54 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
                                 )}
                             </div>
                             
+                            {/* [تگ: بخش تنظیمات نرخ دلار در General] - اصلاح شده برای فارسی‌سازی */}
+                            {selectedType === 'General' && (
+                                <div className="mb-6 p-4 rounded-xl bg-blue-500/5 border border-blue-500/10">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <i data-lucide="dollar-sign" className="w-5 h-5 text-green-400"></i>
+                                        <h4 className="text-sm font-bold text-white">تنظیمات نرخ مرجع (آفلاین)</h4>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 block mb-1">قیمت دستی دلار (تومان)</label>
+                                            <input 
+                                                type="text" 
+                                                className="nexus-input w-full px-3 py-2 text-sm bg-black/30 border-white/10 focus:border-green-400 text-left font-bold tracking-wider" 
+                                                /* نمایش: تبدیل به فارسی و سه رقم سه رقم */
+                                                value={formatPriceDisplay(config['General'].manual_usd_price || '')}
+                                                /* ذخیره: تبدیل به انگلیسی خالص و ارسال به لاجیک */
+                                                onChange={(e) => handleManualUsdChange(toEnglishDigits(e.target.value), 'price')}
+                                                placeholder="۶۰,۰۰۰"
+                                                dir="ltr"
+                                            />
+                                            {/* متن پیشنهاد دهنده با اعداد فارسی */}
+                                            {onlineRateData && (
+                                                <div 
+                                                    className="mt-1 text-[10px] text-gray-500/70 hover:text-green-300 transition-colors cursor-pointer flex items-center gap-1"
+                                                    onClick={applyOnlineToManual}
+                                                    title="کلیک کنید تا جایگزین شود"
+                                                >
+                                                    <i data-lucide="arrow-up-circle" className="w-3 h-3"></i>
+                                                    آخرین نرخ آنلاین: {formatPriceDisplay(onlineRateData.price)} تومان ({toPersianDigits(onlineRateData.date)})
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 block mb-1">تاریخ بروزرسانی دستی</label>
+                                            <input 
+                                                type="text" 
+                                                className="nexus-input w-full px-3 py-2 text-sm bg-black/30 border-white/10 focus:border-green-400 text-center font-bold" 
+                                                /* نمایش و ورودی: تبدیل به فارسی */
+                                                value={toPersianDigits(config['General'].manual_usd_date || '')}
+                                                onChange={(e) => handleManualUsdChange(toEnglishDigits(e.target.value), 'date')}
+                                                placeholder="۱۴۰۳/xx/xx"
+                                                dir="ltr"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* شبکه کارت‌ها برای هر نوع لیست (مثلاً Units, Packages, ...) */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {listKeys.map(listName => { 

@@ -1,17 +1,11 @@
 // ====================================================================================================
-// نسخه: 0.23
+// نسخه: 0.26 (اصلاح تاریخ شمسی در نرخ آنلاین - کامل و بدون حذفیات)
 // فایل: admin_management_logic.js
 // تهیه کننده: ------
 //
 // توضیحات کلی ماژول منطق:
 // این فایل حاوی هوک سفارشی `useAdminManagementLogic` است که تمام منطق تجاری، مدیریت وضعیت (State)
 // و توابع پردازشی صفحه مدیریت را در خود جای داده است.
-//
-// وظایف اصلی:
-// ۱. مدیریت State ها (داده‌ها، مودال‌ها، انتخاب‌ها).
-// ۲. مدیریت عملیات Drag & Drop.
-// ۳. ارتباط با API برای ذخیره، حذف و تغییر نام.
-// ۴. آماده‌سازی داده‌ها برای نمایش در لایه View.
 // ====================================================================================================
 
 // استخراج هوک‌های مورد نیاز از کتابخانه React
@@ -56,8 +50,11 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
     const [renameModal, setRenameModal] = useState({ open: false, type: '', oldVal: '', category: '', listName: '' });
     const [addCategoryModal, setAddCategoryModal] = useState(false);
     const [deleteCategoryModal, setDeleteCategoryModal] = useState({ open: false, key: '' });
-    const [deleteItemModal, setDeleteItemModal] = useState({ open: false, listName: '', value: '' }); // جدید: مودال حذف آیتم
+    const [deleteItemModal, setDeleteItemModal] = useState({ open: false, listName: '', value: '' }); 
     const [inputValue, setInputValue] = useState('');
+
+    // [تگ: وضعیت نرخ آنلاین] برای نمایش در تنظیمات عمومی
+    const [onlineRateData, setOnlineRateData] = useState(null);
 
     // رفرنس‌ها برای مدیریت Drag & Drop
     const dragItem = useRef();
@@ -84,6 +81,31 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
             if (!selectedType && sorted.length > 0) setSelectedType(sorted[0]);
         }
     }, [globalConfig]);
+
+    // [تگ: دریافت نرخ آنلاین] برای پیشنهاد در تنظیمات
+    useEffect(() => {
+        const fetchOnline = async () => {
+            try {
+                const { ok, data } = await fetchAPI('/inventory/stats');
+                if (ok && data && data.live_usd_price) {
+                    // [اصلاح شده]: تبدیل تاریخ میلادی سرور به شمسی برای نمایش صحیح
+                    let displayDate = data.usd_date;
+                    if (displayDate && window.toShamsi) {
+                        displayDate = window.toShamsi(displayDate);
+                    } else if (!displayDate) {
+                        // فال‌بک: تاریخ امروز به شمسی
+                        displayDate = new Date().toLocaleDateString('fa-IR');
+                    }
+
+                    setOnlineRateData({
+                        price: data.live_usd_price,
+                        date: displayDate
+                    });
+                }
+            } catch (e) { console.log("Failed to fetch online rate for suggestion"); }
+        };
+        fetchOnline();
+    }, []);
 
     // بروزرسانی آیکون‌ها
     if (typeof useLucide === 'function') {
@@ -120,7 +142,7 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
                 setRenameModal(prev => ({ ...prev, open: false }));
                 setAddCategoryModal(false);
                 setDeleteCategoryModal({ open: false, key: '' });
-                setDeleteItemModal({ open: false, listName: '', value: '' }); // جدید
+                setDeleteItemModal({ open: false, listName: '', value: '' }); 
             }
             // تایید عملیات با Enter
             if (e.key === 'Enter') {
@@ -130,7 +152,7 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
                     handleAddCategorySubmit(inputValue);
                 } else if (deleteCategoryModal.open) {
                     confirmDeleteCategory();
-                } else if (deleteItemModal.open) { // جدید
+                } else if (deleteItemModal.open) { 
                     confirmDeleteItem();
                 }
             }
@@ -384,6 +406,31 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         setConfig(newConfig);
     };
 
+    // [تگ: مدیریت تغییر نرخ دستی دلار]
+    const handleManualUsdChange = (val, field) => {
+        if (!config['General']) return;
+        const newConfig = { ...config };
+        if (field === 'price') {
+             // ذخیره قیمت به صورت عدد صحیح (بدون فرمت)
+             newConfig['General'].manual_usd_price = parseInt(val) || 0;
+        } else if (field === 'date') {
+             // ذخیره تاریخ به همان صورتی که کاربر وارد کرده (شمسی)
+             newConfig['General'].manual_usd_date = val;
+        }
+        setConfig(newConfig);
+    };
+
+    // [تگ: اعمال نرخ آنلاین به دستی]
+    const applyOnlineToManual = () => {
+        if (!onlineRateData || !config['General']) return;
+        const newConfig = { ...config };
+        newConfig['General'].manual_usd_price = onlineRateData.price;
+        // استفاده از تاریخ شمسی تبدیل شده در fetchOnline
+        newConfig['General'].manual_usd_date = onlineRateData.date;
+        setConfig(newConfig);
+        notify.show('بروزرسانی', 'نرخ آنلاین در فیلد دستی جایگزین شد.', 'success');
+    };
+
     // ------------------------------------------------------------------------------------------------
     // [تگ: خروجی هوک]
     // بازگرداندن تمام توابع و متغیرها برای استفاده در View
@@ -397,10 +444,11 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         renameModal,
         addCategoryModal,
         deleteCategoryModal,
-        deleteItemModal, // اضافه شده
+        deleteItemModal, 
         inputValue,
         listLabels,
         listKeys,
+        onlineRateData, // اضافه شده
 
         // توابع تغییر وضعیت (Setters)
         setSelectedType,
@@ -408,7 +456,7 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         setAddCategoryModal,
         setNewItems,
         setInputValue,
-        setDeleteItemModal, // اضافه شده
+        setDeleteItemModal, 
 
         // توابع هندلر (Handlers)
         handleDragStart,
@@ -425,9 +473,11 @@ window.useAdminManagementLogic = ({ globalConfig, onConfigUpdate }) => {
         handleRenameSubmit,
         handleAddCategorySubmit,
         handlePrefixChange,
+        handleManualUsdChange, // اضافه شده
+        applyOnlineToManual, // اضافه شده
         openRenameModal,
         openAddCategoryModal,
         confirmDeleteCategory,
-        confirmDeleteItem // اضافه شده
+        confirmDeleteItem 
     };
 };

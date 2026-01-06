@@ -1,5 +1,5 @@
 // ====================================================================================================
-// نسخه: 0.20
+// نسخه: 0.22 (نهایی - رابط کاربری با نمایش وضعیت نرخ دلار آفلاین/آنلاین)
 // فایل: inventory.jsx
 // تهیه کننده: ------
 //
@@ -107,9 +107,25 @@ const InventoryPage = () => {
                         <i data-lucide="bar-chart-2" className="w-8 h-8 text-nexus-primary"></i>
                         داشبورد تحلیل سرمایه
                     </h2>
-                    <p className="text-gray-400 text-xs mt-1 font-medium">
-                        نرخ دلار ({stats.usd_date ? toShamsi(stats.usd_date) : 'نامشخص'}): <span className="text-emerald-400 font-mono ltr">{stats.live_usd_price ? formatDecimal(stats.live_usd_price) : '---'} T</span>
-                    </p>
+                    
+                    {/* [تگ: نمایش نرخ دلار با استایل شرطی] */}
+                    <div className="text-gray-400 text-xs mt-2 font-medium flex items-center gap-2">
+                        <span>نرخ دلار ({stats.usd_date ? toShamsi(stats.usd_date) : 'نامشخص'}):</span>
+                        
+                        <span className={`font-mono ltr font-black px-3 py-1 rounded-lg flex items-center gap-2 border transition-all ${
+                            stats.is_offline 
+                                ? 'text-rose-400 border-rose-500/50 bg-rose-500/10 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.2)]' 
+                                : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5'
+                        }`}>
+                            {stats.live_usd_price ? formatDecimal(stats.live_usd_price) : '---'} T
+                            
+                            {stats.is_offline && (
+                                <span className="text-[9px] font-bold bg-rose-500 text-white px-1.5 rounded animate-none">
+                                    آفلاین (دستی)
+                                </span>
+                            )}
+                        </span>
+                    </div>
                 </div>
                 
                 <div className="flex bg-slate-900/50 p-1 rounded-xl border border-white/5">

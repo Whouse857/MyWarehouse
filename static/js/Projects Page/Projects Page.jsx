@@ -1,19 +1,89 @@
 /**
  * ====================================================================================================
  * فایل: Projects Page.js
- * نسخه: 0.48 (UI Layer - شامل Safety Check و کلاس CSS درگ - کد کامل)
- * * توضیحات:
- * این فایل "پوسته" صفحه پروژه‌ها است.
+ * نسخه: 0.59 (جابجایی باکس نرخ دلار به ابتدای محاسبات + افزودن به لیست پروژه‌ها)
  * ====================================================================================================
  */
 
 const { useState, useEffect, useCallback, useMemo } = React;
 
+// ----------------------------------------------------------------------------------------------------
+// [تگ: کامپوننت ویجت نرخ دلار]
+// این کامپوننت برای جلوگیری از تکرار کد و استفاده در هر دو نمای لیست و BOM ساخته شده است.
+// ----------------------------------------------------------------------------------------------------
+const DollarRateWidget = ({ rate, setRate, serverRate, config }) => {
+    return (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 mb-6 shadow-lg animate-in fade-in slide-in-from-top-4">
+            <div className="flex justify-between items-center">
+                <label className="text-[11px] text-nexus-primary font-black flex items-center gap-2">
+                    <i data-lucide="dollar-sign" className="w-4 h-4"></i>
+                    مبنای محاسبه دلار (تومان)
+                </label>
+                <i data-lucide="edit-2" className="w-3.5 h-3.5 text-gray-500"></i>
+            </div>
+            
+            {/* اینپوت اصلی برای وارد کردن عدد */}
+            <input 
+                type="number"
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xl font-black text-center text-white outline-none focus:border-nexus-primary transition-all shadow-inner focus:shadow-[0_0_15px_rgba(99,102,241,0.3)]"
+                value={rate}
+                onChange={(e) => setRate(Math.max(0, parseInt(e.target.value) || 0))}
+                placeholder="نرخ دلار را وارد کنید..."
+            />
+
+            {/* پیشنهادات هوشمند (چیپ‌ها) */}
+            <div className="flex flex-col gap-2 mt-1">
+                <span className="text-[9px] text-gray-500 font-bold px-1">نرخ‌های پیشنهادی سیستم:</span>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* 1. نرخ آنلاین (سرور) */}
+                    <button 
+                        onClick={() => serverRate.price > 0 && setRate(serverRate.price)}
+                        className="flex items-center justify-between p-2 rounded-lg border border-white/5 bg-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all group"
+                        title="استفاده از نرخ آنلاین"
+                    >
+                        <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/10"><i data-lucide="globe" className="w-3.5 h-3.5"></i></div>
+                            <div className="flex flex-col items-start">
+                                <span className="text-[10px] text-gray-300 font-bold group-hover:text-emerald-300">آنلاین سرور</span>
+                                <span className="text-[9px] text-gray-500 font-mono">{serverRate.date || '---'}</span>
+                            </div>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-emerald-400 tracking-wide bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                            {serverRate.price > 0 ? serverRate.price.toLocaleString() : '---'}
+                        </span>
+                    </button>
+
+                    {/* 2. نرخ تنظیمات (دستی) */}
+                    <button 
+                        onClick={() => {
+                            const manualPrice = config?.['General']?.manual_usd_price;
+                            if (manualPrice) setRate(manualPrice);
+                        }}
+                        className="flex items-center justify-between p-2 rounded-lg border border-white/5 bg-white/5 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all group"
+                        title="استفاده از نرخ تنظیمات دستی"
+                    >
+                        <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/10"><i data-lucide="settings-2" className="w-3.5 h-3.5"></i></div>
+                            <div className="flex flex-col items-start">
+                                <span className="text-[10px] text-gray-300 font-bold group-hover:text-blue-300">دستی تنظیمات</span>
+                                <span className="text-[9px] text-gray-500 font-mono">{config?.['General']?.manual_usd_date || '---'}</span>
+                            </div>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-blue-400 tracking-wide bg-blue-500/10 px-1.5 py-0.5 rounded">
+                            {config?.['General']?.manual_usd_price ? parseInt(config['General'].manual_usd_price).toLocaleString() : '---'}
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ProjectsPage = ({ user, serverStatus }) => {
     
     // ================================================================================================
     // [Safety Check] بررسی بارگذاری فایل منطق
-    // اگر فایل Logic هنوز لود نشده باشد، ساعت شنی نمایش داده می‌شود تا برنامه کرش نکند.
     // ================================================================================================
     if (!window.useProjectsLogic) {
         return (
@@ -32,7 +102,12 @@ const ProjectsPage = ({ user, serverStatus }) => {
     const {
         view, setView,
         searchTerm, setSearchTerm,
-        liveUsdRate,
+        
+        // [تگ: دریافت نرخ‌ها از منطق]
+        calculationRate, setCalculationRate, 
+        serverRate, 
+        config,
+
         isModalOpen, setIsModalOpen,
         projectForm, setProjectForm,
         activeProject,
@@ -103,6 +178,16 @@ const ProjectsPage = ({ user, serverStatus }) => {
                     </div>
                 </div>
 
+                {/* [تگ: ابزار محاسبه نرخ دلار در لیست پروژه‌ها] */}
+                <div className="max-w-2xl mx-auto mb-8">
+                    <DollarRateWidget 
+                        rate={calculationRate} 
+                        setRate={setCalculationRate} 
+                        serverRate={serverRate} 
+                        config={config} 
+                    />
+                </div>
+
                 {/* شبکه کارت‌های پروژه */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredProjects.map(p => {
@@ -110,7 +195,8 @@ const ProjectsPage = ({ user, serverStatus }) => {
                         const usdBase = parseFloat(p.total_price_usd || 0);
                         const cRate = parseFloat(p.conversion_rate || 0);
                         const pProfit = parseFloat(p.part_profit || 0);
-                        const baseToman = usdBase * liveUsdRate;
+                        // نمایش قیمت تقریبی با نرخ فعلی محاسبه (زنده)
+                        const baseToman = usdBase * calculationRate;
                         const finalPriceToman = baseToman * (1 + cRate / 100) * (1 + pProfit / 100);
 
                         return (
@@ -285,7 +371,9 @@ const ProjectsPage = ({ user, serverStatus }) => {
                                     {bomItems.map((item, idx) => {
                                         const unitPriceUSD = parseFloat(item.toman_price || 0) / parseFloat(item.usd_rate || 1);
                                         const rowTotalPriceUSD = unitPriceUSD * parseFloat(item.required_qty || 0);
-                                        const rowTotalPriceToman = rowTotalPriceUSD * liveUsdRate;
+                                        
+                                        // محاسبه قیمت تومانی ردیف بر اساس نرخ انتخابی کاربر
+                                        const rowTotalPriceToman = rowTotalPriceUSD * calculationRate;
                                         
                                         const totalRequiredInBatch = item.required_qty * productionCount;
                                         const isLowStock = (item.inventory_qty || 0) < totalRequiredInBatch;
@@ -297,7 +385,6 @@ const ProjectsPage = ({ user, serverStatus }) => {
                                                 onDragStart={(e) => onDragStart(e, idx)}
                                                 onDragOver={(e) => onDragOver(e, idx)}
                                                 onDrop={(e) => onDrop(e, idx)}
-                                                /* [اصلاح شد] اتصال کلاس CSS برای درگ و دراپ */
                                                 className={`bom-item-row hover:bg-white/5 cursor-move group font-medium ${draggedIndex === idx ? 'dragging' : ''}`}
                                             >
                                                 <td className="p-4 text-gray-600"><i data-lucide="grip-vertical" className="w-4 h-4 opacity-0 group-hover:opacity-100"></i></td>
@@ -376,6 +463,17 @@ const ProjectsPage = ({ user, serverStatus }) => {
                 {/* ستون چپ: پنل محاسبات نهایی و عملیات انبار */}
                 <div className="xl:col-span-4 sticky top-8 space-y-6">
                     <div className="glass-panel rounded-[2.5rem] p-8 border border-white/10 shadow-2xl bg-gradient-to-b from-white/5 to-transparent">
+                        
+                        {/* [تگ: بخش جدید ورود نرخ دلار در بالای ستون] */}
+                        <div className="mb-6">
+                            <DollarRateWidget 
+                                rate={calculationRate} 
+                                setRate={setCalculationRate} 
+                                serverRate={serverRate} 
+                                config={config} 
+                            />
+                        </div>
+
                         <h3 className="text-lg font-black text-white mb-6 border-b border-white/5 pb-4">آنالیز نهایی هزینه پروژه (دقیق)</h3>
                         <div className="space-y-6">
                             <div className="flex justify-between items-center text-sm font-bold text-gray-400">
@@ -459,13 +557,6 @@ const ProjectsPage = ({ user, serverStatus }) => {
                                 </div>
                             </div>
                             
-                            <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 flex gap-3 items-start">
-                                <i data-lucide="alert-circle" className="w-5 h-5 text-blue-400 shrink-0 mt-0.5"></i>
-                                <div className="text-[10px] text-blue-200/70 leading-relaxed font-medium">
-                                    محاسبه نهایی بر اساس نرخ دلار جاری سیستم (${liveUsdRate.toLocaleString()} تومان) و ضرایب دقیق تعیین شده در سیستم H&Y انجام شده است.
-                                </div>
-                            </div>
-
                             <button onClick={handlePrintBOM} className="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-gray-300 font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2 font-black">
                                 <i data-lucide="printer" className="w-5 h-5"></i> چاپ رسمی لیست BOM
                             </button>

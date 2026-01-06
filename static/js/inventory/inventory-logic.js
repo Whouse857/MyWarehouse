@@ -1,19 +1,17 @@
 // ====================================================================================================
-// نسخه: 0.20
+// نسخه: 0.25 (نهایی - کش هوشمند با اولویت نرخ دستی در شروع)
 // فایل: inventory-logic.js
-// تهیه کننده: ------
-//
-// توضیحات کلی ماژول منطق:
-// این فایل حاوی هوک سفارشی `useInventoryLogic` است که مغز متفکر داشبورد انبار محسوب می‌شود.
-// تمام محاسبات آماری، ارتباط با API، تولید لیست خرید و مدیریت وضعیت‌ها در اینجا انجام می‌شود
-// و داده‌های آماده نمایش را به لایه View (فایل JSX) ارسال می‌کند.
+// توضیح:
+// 1. هنگام شروع، آمار کش شده خوانده می‌شود.
+// 2. بلافاصله نرخ دستی (از تنظیمات کش شده) روی آمار اعمال و محاسبه می‌شود.
+// 3. صفحه بدون لودینگ باز می‌شود.
+// 4. در پس‌زمینه اطلاعات جدید دریافت و جایگزین می‌شود.
 // ====================================================================================================
 
 const { useState, useEffect, useCallback } = React;
 
 // ----------------------------------------------------------------------------------------------------
 // [تگ: توابع کمکی فرمت‌دهی]
-// این توابع خارج از هوک تعریف شده‌اند تا مستقل باشند و در صورت نیاز مجدداً استفاده شوند.
 // ----------------------------------------------------------------------------------------------------
 const formatDecimal = (num) => {
     if (num === undefined || num === null || isNaN(num)) return '0.00';
@@ -37,47 +35,155 @@ const getPartCodeInv = (item, config) => {
 // [تگ: هوک منطق اصلی]
 // ----------------------------------------------------------------------------------------------------
 window.useInventoryLogic = () => {
-    // ------------------------------------------------------------------------------------------------
-    // [تگ: مدیریت وضعیت (State)]
-    // ------------------------------------------------------------------------------------------------
-    const [stats, setStats] = useState(null);
-    const [config, setConfig] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('overview');
     
-    // استفاده از هوک نوتیفیکیشن (فرض بر وجود آن در محیط)
+    // 1. مقداردهی اولیه هوشمند (اعمال نرخ دستی روی داده‌های کش شده)
+    const [stats, setStats] = useState(() => {
+        try {
+            const cachedStatsStr = localStorage.getItem('HNY_INVENTORY_STATS');
+            const cachedConfigStr = localStorage.getItem('HNY_GLOBAL_CONFIG');
+            
+            // اگر آمار کش شده نداریم، null برگردان (تا لودینگ نمایش داده شود یا آبجکت خالی ساخته شود)
+            if (!cachedStatsStr) {
+                // اگر فقط کانفیگ داریم، یک آبجکت خالی با نرخ دستی می‌سازیم
+                if (cachedConfigStr) {
+                    const cfg = JSON.parse(cachedConfigStr);
+                    const mPrice = cfg['General']?.manual_usd_price ? parseInt(cfg['General'].manual_usd_price) : 60000;
+                    return {
+                        live_usd_price: mPrice,
+                        usd_date: cfg['General']?.manual_usd_date || "---",
+                        is_offline: true,
+                        total_value_toman: 0,
+                        total_value_usd_live: 0,
+                        shortages: [],
+                        categories: {}
+                    };
+                }
+                return null;
+            }
+
+            const cachedStats = JSON.parse(cachedStatsStr);
+            
+            // اگر کانفیگ (نرخ دستی) داریم، آن را روی آمار کش شده اعمال می‌کنیم
+            // تا کاربر بلافاصله محاسبات را با نرخ دستی ببیند (طبق خواسته شما)
+            if (cachedConfigStr) {
+                const cfg = JSON.parse(cachedConfigStr);
+                const manualPrice = cfg['General']?.manual_usd_price ? parseInt(cfg['General'].manual_usd_price) : 60000;
+                
+                // بروزرسانی محاسبات با نرخ دستی
+                return {
+                    ...cachedStats,
+                    live_usd_price: manualPrice,
+                    usd_date: cfg['General']?.manual_usd_date || cachedStats.usd_date,
+                    is_offline: true, // نشان می‌دهیم فعلاً آفلاین است تا وقتی آنلاین بیاید
+                    total_value_toman: (cachedStats.total_value_usd_live || 0) * manualPrice
+                };
+            }
+
+            return cachedStats;
+        } catch (e) { return null; }
+    });
+
+    const [config, setConfig] = useState(() => {
+        try {
+            const cached = localStorage.getItem('HNY_GLOBAL_CONFIG');
+            return cached ? JSON.parse(cached) : null;
+        } catch (e) { return null; }
+    });
+
+    // اگر دیتا (چه واقعی چه ساختگی از کانفیگ) داشته باشیم، لودینگ نداریم
+    const [loading, setLoading] = useState(() => {
+        const hasStats = !!localStorage.getItem('HNY_INVENTORY_STATS');
+        const hasConfig = !!localStorage.getItem('HNY_GLOBAL_CONFIG');
+        return !(hasStats || hasConfig);
+    });
+    
+    const [activeTab, setActiveTab] = useState('overview');
     const notify = typeof useNotify === 'function' ? useNotify() : { show: console.log };
 
     // ------------------------------------------------------------------------------------------------
-    // [تگ: دریافت اطلاعات]
+    // [تگ: دریافت اطلاعات (Background Fetch)]
     // ------------------------------------------------------------------------------------------------
-    const loadStats = useCallback(async () => {
-        setLoading(true);
+    const loadStats = useCallback(async (isManualRefresh = false) => {
+        // اگر رفرش دستی است یا هیچی نداریم، لودینگ را فعال کن
+        if (isManualRefresh || !stats) {
+            setLoading(true);
+        }
+
         try {
             const [statsRes, configRes] = await Promise.all([
                 fetchAPI('/inventory/stats'),
                 fetchAPI('/settings/config')
             ]);
-            if (statsRes.ok) setStats(statsRes.data);
-            if (configRes.ok) setConfig(configRes.data);
-            else notify.show('خطا', 'عدم دریافت اطلاعات آماری', 'error');
+            
+            // ذخیره و آپدیت کانفیگ
+            let finalConfig = configRes.ok ? configRes.data : null;
+            if (configRes.ok) {
+                setConfig(finalConfig);
+                localStorage.setItem('HNY_GLOBAL_CONFIG', JSON.stringify(finalConfig));
+            } else {
+                finalConfig = config || {}; 
+            }
+
+            const manualPrice = finalConfig && finalConfig['General'] ? parseInt(finalConfig['General'].manual_usd_price) : 60000;
+            const manualDate = finalConfig && finalConfig['General'] ? finalConfig['General'].manual_usd_date : "1403/xx/xx";
+
+            let rawData = statsRes.data || {};
+            let finalState;
+
+            // اگر نرخ آنلاین معتبر رسید -> استفاده از آنلاین
+            if (statsRes.ok && rawData.live_usd_price && rawData.live_usd_price > 0) {
+                finalState = {
+                    ...rawData,
+                    is_offline: false
+                };
+            } else {
+                // اگر نرخ آنلاین نیامد -> استفاده از نرخ دستی روی داده‌های جدید (یا قدیمی)
+                finalState = {
+                    ...rawData, // شامل لیست قطعات جدید (اگر statsRes.ok باشد)
+                    live_usd_price: manualPrice,
+                    usd_date: manualDate,
+                    is_offline: true,
+                    // محاسبه مجدد تومان با نرخ دستی
+                    total_value_toman: (rawData.total_value_usd_live || 0) * manualPrice
+                };
+                
+                // اطمینان از وجود آرایه‌ها برای جلوگیری از کرش
+                if (!finalState.shortages) finalState.shortages = [];
+                if (!finalState.categories) finalState.categories = {};
+            }
+
+            setStats(finalState);
+            localStorage.setItem('HNY_INVENTORY_STATS', JSON.stringify(finalState));
+
         } catch (e) {
-            console.error(e);
+            console.error("Inventory Background Update Failed:", e);
+            // در صورت خطا، اگر دیتای قبلی داریم دست نمی‌زنیم (تا کاربر همان کش شده را ببیند)
+            // فقط اگر هیچی نداشتیم، وضعیت اضطراری ست می‌کنیم
+            if (!stats) {
+                setStats({
+                    live_usd_price: 60000,
+                    usd_date: "خطای شبکه",
+                    is_offline: true,
+                    total_value_toman: 0,
+                    total_value_usd_live: 0,
+                    shortages: [],
+                    categories: {}
+                });
+            }
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [stats, config]); 
 
-    useEffect(() => { loadStats(); }, [loadStats]);
+    // اجرای اولیه (بدون آرگومان = بدون لودینگ اگر کش باشد)
+    useEffect(() => { loadStats(); }, []);
 
-    // رندر مجدد آیکون‌ها هنگام تغییر تب یا دریافت داده جدید
     useEffect(() => {
         if (window.lucide) window.lucide.createIcons();
     }, [stats, activeTab]);
 
     // ------------------------------------------------------------------------------------------------
     // [تگ: چاپ لیست کسری]
-    // منطق تولید HTML برای پرینت در اینجا کپسوله شده است.
     // ------------------------------------------------------------------------------------------------
     const handlePrintShortages = () => {
         if (!stats || !stats.shortages || stats.shortages.length === 0) return;
@@ -154,7 +260,6 @@ window.useInventoryLogic = () => {
 
     // ------------------------------------------------------------------------------------------------
     // [تگ: محاسبات آماری]
-    // این مقادیر از روی داده‌های خام (stats) محاسبه شده و به View پاس داده می‌شوند.
     // ------------------------------------------------------------------------------------------------
     const derivedStats = () => {
         if (!stats) return {};
@@ -186,26 +291,20 @@ window.useInventoryLogic = () => {
     };
 
     return {
-        // داده‌ها و وضعیت‌ها
         stats,
         config,
         loading,
         activeTab,
-        
-        // توابع تغییر وضعیت
         setActiveTab,
-        loadStats,
+        // ارسال true برای رفرش دستی تا لودینگ نمایش داده شود
+        loadStats: () => loadStats(true), 
         handlePrintShortages,
-        
-        // داده‌های محاسبه شده
         ...derivedStats(),
-        
-        // توابع کمکی
         helpers: {
             formatDecimal,
             formatInteger,
             getPartCodeInv,
-            toShamsi: (window.toShamsi || ((d) => d)) // اطمینان از وجود تابع تبدیل تاریخ
+            toShamsi: (window.toShamsi || ((d) => d))
         }
     };
 };

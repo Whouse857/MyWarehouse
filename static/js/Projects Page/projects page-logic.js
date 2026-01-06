@@ -1,10 +1,10 @@
 /**
  * ====================================================================================================
  * فایل: projects page-logic.js
- * نسخه: 0.48 (کامل و بدون حذفیات)
+ * نسخه: 0.60 (نهایی و هماهنگ با ویجت نرخ دلار)
  * * توضیحات:
  * این فایل "مغز" صفحه پروژه‌ها است. تمامی محاسبات، ارتباط با سرور و مدیریت وضعیت (State) در اینجا
- * انجام می‌شود.
+ * انجام می‌شود. این فایل دیتای لازم برای "ویجت نرخ دلار" در UI را تامین می‌کند.
  * ====================================================================================================
  */
 
@@ -29,8 +29,19 @@ window.useProjectsLogic = (user, serverStatus) => {
     const [projects, setProjects] = useState([]); 
     const [searchTerm, setSearchTerm] = useState(""); 
     const [loading, setLoading] = useState(true); 
-    const [liveUsdRate, setLiveUsdRate] = useState(window.USD_RATE || 60000); 
     
+    // [تگ: مدیریت نرخ ارز]
+    // calculationRate: نرخی که کاربر تایید کرده و مبنای تمام محاسبات است (قابل ویرایش در UI)
+    // مقدار پیش‌فرض 60000 است تا زمانی که از سرور یا کانفیگ خوانده شود
+    const [calculationRate, setCalculationRate] = useState(window.USD_RATE || 60000);
+    
+    // serverRate: آخرین نرخ آنلاین که صرفاً جهت پیشنهاد به کاربر نگه داشته می‌شود
+    const [serverRate, setServerRate] = useState({ price: 0, date: '' });
+    
+    // [تگ: کانفیگ سراسری] 
+    // برای دسترسی به نرخ دستی ذخیره شده در ادمین (General Config) جهت پیشنهاد به کاربر
+    const [config, setConfig] = useState(null);
+
     // --- وضعیت‌های مربوط به فرم و مودال ---
     const [isModalOpen, setIsModalOpen] = useState(false); 
     const [projectForm, setProjectForm] = useState({ id: null, name: '', description: '' }); 
@@ -58,14 +69,47 @@ window.useProjectsLogic = (user, serverStatus) => {
     // [SECTION 3] اثرات جانبی (Side Effects / useEffects)
     // ================================================================================================
 
+    // [تگ: دریافت کانفیگ]
+    // این تابع تنظیمات عمومی را می‌خواند تا نرخ دستی دلار در دسترس باشد
+    const fetchConfig = useCallback(async () => {
+        try {
+            const { ok, data } = await fetchAPI('/settings/config');
+            if (ok) setConfig(data);
+        } catch (e) { console.error("Config fetch failed"); }
+    }, [fetchAPI]);
+
     // 1. دریافت نرخ دلار زنده
     const fetchLiveRate = useCallback(async () => {
         try {
             const { ok, data } = await fetchAPI('/inventory/stats');
-            if (ok && data.live_usd_price) {
-                setLiveUsdRate(data.live_usd_price);
+            if (ok && data && data.live_usd_price && data.live_usd_price > 0) {
+                // تبدیل تاریخ میلادی به شمسی برای نمایش زیباتر در پیشنهادها
+                let displayDate = data.usd_date;
+                if (displayDate && window.toShamsi) {
+                    displayDate = window.toShamsi(displayDate);
+                } else if (!displayDate) {
+                    displayDate = new Date().toLocaleDateString('fa-IR');
+                }
+
+                // ذخیره نرخ سرور جهت پیشنهاد به کاربر
+                setServerRate({ 
+                    price: data.live_usd_price, 
+                    date: displayDate 
+                });
+                
+                // هوشمندی: فقط بار اول که صفحه لود می‌شود و نرخ روی پیش‌فرض است، آن را آپدیت کن.
+                // اگر کاربر خودش نرخ را تغییر داده باشد، دیگر دستکاری نمی‌کنیم.
+                setCalculationRate(prev => {
+                    return prev === 60000 ? data.live_usd_price : prev;
+                });
+                
+            } else {
+                // اگر دیتا نامعتبر بود خطا چاپ میکنیم اما برنامه متوقف نمیشود
+                console.warn("Invalid live rate data received");
             }
-        } catch (e) { console.error("H&Y System: Rate fetch failed"); }
+        } catch (e) { 
+            console.error("H&Y System: Live Rate fetch failed."); 
+        }
     }, [fetchAPI]);
 
     // 2. به‌روزرسانی آیکون‌های Lucide
@@ -76,7 +120,7 @@ window.useProjectsLogic = (user, serverStatus) => {
             }
         }, 50);
         return () => clearTimeout(timer);
-    }, [view, projects, isModalOpen, bomItems, extraCosts, shortageData, searchInventory, loading, isSaving, isDeducting]);
+    }, [view, projects, isModalOpen, bomItems, extraCosts, shortageData, searchInventory, loading, isSaving, isDeducting, calculationRate]);
 
     // 3. لود کردن لیست پروژه‌ها
     const loadProjects = useCallback(async () => {
@@ -101,12 +145,13 @@ window.useProjectsLogic = (user, serverStatus) => {
         } catch (e) { console.error("Inventory Load Error"); }
     }, [fetchAPI]);
 
-    // 5. اجرای اولیه
+    // 5. اجرای اولیه: لود کردن همه داده‌های مورد نیاز
     useEffect(() => { 
         loadProjects(); 
         loadInventory();
-        fetchLiveRate();
-    }, [loadProjects, loadInventory, fetchLiveRate]);
+        fetchConfig(); // دریافت تنظیمات (برای نرخ دستی)
+        fetchLiveRate(); // دریافت نرخ آنلاین
+    }, [loadProjects, loadInventory, fetchConfig, fetchLiveRate]);
 
     // ================================================================================================
     // [SECTION 4] هندلرهای Drag & Drop
@@ -153,6 +198,9 @@ window.useProjectsLogic = (user, serverStatus) => {
     const handlePrintBOM = () => {
         const printWindow = window.open('', '_blank');
         const purchaseList = bomItems.filter(item => (item.inventory_qty || 0) < (item.required_qty * productionCount));
+
+        // استفاده از نرخ محاسبه شده توسط کاربر برای درج در پرینت
+        const usdStatusText = `(مبنای محاسبه: ${calculationRate.toLocaleString()} تومان)`;
 
         const htmlContent = `
             <html dir="rtl">
@@ -259,7 +307,10 @@ window.useProjectsLogic = (user, serverStatus) => {
                         <div class="totals-row"><span>تنوع قطعات:</span> <span>${totals.variety} ردیف</span></div>
                         <div class="totals-row"><span>هزینه دلاری قطعات ($):</span> <span>${totals.usdBatch.toFixed(6)}</span></div>
                         <div class="totals-row"><span>کل هزینه ارزی ($):</span> <span>${totals.totalProductionUSD.toFixed(6)}</span></div>
-                        <div class="totals-row"><span>نرخ دلار (روز):</span> <span>${liveUsdRate.toLocaleString()} تومان</span></div>
+                        <div class="totals-row">
+                            <span>نرخ دلار:</span> 
+                            <span>${calculationRate.toLocaleString()} تومان <br/><small>${usdStatusText}</small></span>
+                        </div>
                         <div class="final-price totals-row">
                             <span>قیمت نهایی کل پارت:</span> 
                             <span>${Math.round(totals.totalProductionToman).toLocaleString()} تومان</span>
@@ -345,7 +396,7 @@ window.useProjectsLogic = (user, serverStatus) => {
     const saveBOMDetails = async () => {
         setIsSaving(true);
         try {
-            // ۱. محاسبه دستی با محافظت در برابر تقسیم بر صفر
+            // ۱. محاسبه قیمت دلاری BOM (محافظت در برابر تقسیم بر صفر)
             const bomTotalUSD = bomItems.reduce((sum, item) => {
                 const price = parseFloat(item.toman_price || 0);
                 let rate = parseFloat(item.usd_rate);
@@ -355,10 +406,11 @@ window.useProjectsLogic = (user, serverStatus) => {
                 return sum + ((price / rate) * qty);
             }, 0);
             
+            // ۲. محاسبه هزینه‌های جانبی
             const extraTotalUSD = extraCosts.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
             const unitTotalUSD = bomTotalUSD + extraTotalUSD;
             
-            // قیمت کل پارت
+            // ۳. محاسبه قیمت کل پارت
             const totalBatchUSD = unitTotalUSD * productionCount;
             const totalCount = bomItems.reduce((sum, item) => sum + (parseFloat(item.required_qty) || 0), 0) * productionCount;
 
@@ -473,6 +525,10 @@ window.useProjectsLogic = (user, serverStatus) => {
     // [SECTION 8] محاسبات
     // ================================================================================================
     const totals = useMemo(() => {
+        // [مهم] تمام محاسبات بر اساس calculationRate انجام می‌شود
+        // این نرخ توسط کاربر در باکس پایین چپ قابل تغییر است
+        const rateToUse = parseFloat(calculationRate) || 0;
+
         const bomUnitUSD = bomItems.reduce((sum, item) => {
             const unitPriceUSD = parseFloat(item.toman_price || 0) / parseFloat(item.usd_rate || 1);
             return sum + (unitPriceUSD * parseFloat(item.required_qty || 0));
@@ -480,11 +536,16 @@ window.useProjectsLogic = (user, serverStatus) => {
 
         const extraUnitUSD = extraCosts.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
         const totalUnitUSD = bomUnitUSD + extraUnitUSD;
-        const unitBaseToman = totalUnitUSD * liveUsdRate;
+        
+        // تبدیل به تومان با نرخ انتخابی کاربر
+        const unitBaseToman = totalUnitUSD * rateToUse;
+        
         const afterConversionToman = unitBaseToman * (1 + (parseFloat(conversionRate) || 0) / 100);
         const finalUnitToman = afterConversionToman * (1 + (parseFloat(partProfit) || 0) / 100);
         const totalProfitToman = (finalUnitToman - afterConversionToman) * productionCount;
-        const totalProfitUSD = totalProfitToman / liveUsdRate;
+        
+        // محاسبه سود دلاری بر اساس همان نرخ
+        const totalProfitUSD = rateToUse > 0 ? totalProfitToman / rateToUse : 0;
 
         return { 
             usdUnit: bomUnitUSD,
@@ -498,7 +559,7 @@ window.useProjectsLogic = (user, serverStatus) => {
             profitBatchUSD: totalProfitUSD,
             profitBatchToman: totalProfitToman
         };
-    }, [bomItems, extraCosts, productionCount, conversionRate, partProfit, liveUsdRate]);
+    }, [bomItems, extraCosts, productionCount, conversionRate, partProfit, calculationRate]);
 
     // فیلتر جستجو
     const filteredInventory = inventory.filter(p => 
@@ -518,7 +579,12 @@ window.useProjectsLogic = (user, serverStatus) => {
         projects, setProjects,
         searchTerm, setSearchTerm,
         loading, setLoading,
-        liveUsdRate, setLiveUsdRate,
+        
+        // [تگ: خروجی‌های مربوط به نرخ دلار]
+        calculationRate, setCalculationRate,
+        serverRate,
+        config, // برای دسترسی به نرخ دستی در UI
+
         isModalOpen, setIsModalOpen,
         projectForm, setProjectForm,
         activeProject, setActiveProject,
