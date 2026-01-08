@@ -2,14 +2,14 @@
  * ====================================================================================================
  * فایل: ProjectBOM.jsx
  * وظیفه: کامپوننت رابط کاربری ویرایشگر BOM
- * توضیحات: کد کامل کامپوننت
+ * توضیحات: حذف دکمه‌های اسپینر از اینپوت تعداد
  * ====================================================================================================
  */
 
 const { useEffect, useRef } = React;
 
 // ----------------------------------------------------------------------------------------------------
-// [Sub-Component] بج‌های مشخصات فنی (وات، تلرانس و...)
+// [Sub-Component] بج‌های مشخصات فنی
 // ----------------------------------------------------------------------------------------------------
 const SpecBadges = ({ item }) => (
     <div className="flex flex-wrap gap-1 mt-1">
@@ -20,9 +20,47 @@ const SpecBadges = ({ item }) => (
     </div>
 );
 
+// ----------------------------------------------------------------------------------------------------
+// [Sub-Component] مودال تایید حذف
+// ----------------------------------------------------------------------------------------------------
+const DeleteConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
+    if (!isOpen) return null;
+    
+    return (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in" onClick={onCancel}>
+            <div 
+                className="glass-panel border border-white/10 p-6 rounded-2xl max-w-md w-full shadow-2xl animate-scale-in text-right" 
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-rose-500/10 flex items-center justify-center mb-2">
+                        <i data-lucide="trash-2" className="w-8 h-8 text-rose-500"></i>
+                    </div>
+                    <h3 className="text-xl font-bold text-white">{title}</h3>
+                    <p className="text-gray-300 text-sm leading-relaxed">{message}</p>
+                </div>
+                
+                <div className="flex gap-3 mt-8">
+                    <button 
+                        onClick={onCancel} 
+                        className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-bold transition border border-white/5"
+                    >
+                        انصراف
+                    </button>
+                    <button 
+                        onClick={onConfirm} 
+                        className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition shadow-lg shadow-rose-900/20"
+                    >
+                        تایید و حذف
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
     
-    // اتصال به مغز متفکر (Logic Hook)
     const logic = window.useProjectBomLogic(project, rate);
     
     const {
@@ -30,34 +68,32 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
         filteredInventory, isSaving, isDeducting, shortageData, setShortageData,
         productionCount, setProductionCount, calculationRate, setCalculationRate,
         conversionRate, setConversionRate, partProfit, setPartProfit, draggedIndex,
-        lastSwappedId, // دریافت شناسه سواپ شده برای انیمیشن
+        lastSwappedId, 
         
         targetParentIdForAlt, setTargetParentIdForAlt,
         addPartToBOM, updateBOMQty, removeBOMItem, 
+        // توابع مودال حذف
+        deleteModal, requestDelete, confirmDelete, cancelDelete,
+        
         toggleExpand, toggleSelection,
         setExtraCosts, saveBOMDetails, handleDeduct,
         handlePrintBOM, 
-        onDragStart, onDragOver, onDrop, onDragEnd, // توابع درگ و دراپ
+        onDragStart, onDragOver, onDrop, onDragEnd, 
         totals 
     } = logic;
 
     const searchInputRef = useRef(null);
 
-    // بارگذاری مجدد آیکون‌ها
     useEffect(() => {
         if (window.lucide) setTimeout(() => window.lucide.createIcons(), 100);
-    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt]);
+    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt, deleteModal]);
 
-    // فوکوس خودکار
     useEffect(() => {
         if (targetParentIdForAlt && searchInputRef.current) {
             searchInputRef.current.focus();
         }
     }, [targetParentIdForAlt]);
 
-    // ------------------------------------------------------------------------------------------------
-    // [UI] ویجت نرخ دلار
-    // ------------------------------------------------------------------------------------------------
     const DollarWidget = () => (
         <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 mb-6 shadow-lg">
              <div className="flex justify-between items-center">
@@ -67,7 +103,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
             </div>
             <input 
                 type="number" 
-                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xl font-black text-center text-white outline-none focus:border-nexus-primary transition-all"
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xl font-black text-center text-white outline-none focus:border-nexus-primary transition-all no-spinner"
                 value={calculationRate} 
                 onChange={(e) => setCalculationRate(Math.max(0, parseInt(e.target.value) || 0))} 
             />
@@ -96,9 +132,15 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
     return (
         <div className="flex-1 p-8 pb-20 overflow-y-auto custom-scroll text-right animate-in fade-in" dir="rtl">
             
-            {/* ---------------------------------------------------------------------------------------
-               [HEADER] هدر صفحه
-            ---------------------------------------------------------------------------------------- */}
+            {/* مودال حذف سفارشی */}
+            <DeleteConfirmationModal 
+                isOpen={deleteModal.isOpen}
+                title={deleteModal.title}
+                message={deleteModal.message}
+                onConfirm={confirmDelete}
+                onCancel={cancelDelete}
+            />
+
             <div className="flex items-center justify-between mb-8 pb-6 border-b border-white/5">
                 <div className="flex items-center gap-4">
                     <button onClick={onBack} className="p-3 rounded-2xl bg-white/5 text-gray-400 hover:text-white transition-all hover:bg-white/10 hover:scale-105 active:scale-95">
@@ -135,13 +177,11 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                 ------------------------------------------------------------------------------------ */}
                 <div className="xl:col-span-8 space-y-6">
                     <div className="glass-panel rounded-[2rem] border border-white/5 overflow-visible z-10 relative">
-                        {/* هدر جدول و جستجو */}
                         <div className="p-6 bg-white/5 border-b border-white/5 flex justify-between items-center">
                             <h3 className="font-bold text-white flex items-center gap-2">
                                 <i data-lucide="package" className="w-5 h-5 text-nexus-primary"></i> قطعات پروژه
                             </h3>
                             
-                            {/* باکس جستجو */}
                             <div className="relative w-96 z-50">
                                 <i data-lucide="search" className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"></i>
                                 <input 
@@ -182,12 +222,10 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                             </div>
                         </div>
 
-                        {/* جدول کامل */}
                         <div className="overflow-x-auto min-h-[300px]">
                             <table className="w-full text-right border-collapse">
                                 <thead className="text-[10px] text-gray-500 uppercase bg-black/20 font-black sticky top-0">
                                     <tr>
-                                        {/* ادغام ستون‌های ابزار (جابجایی/درگ) */}
                                         <th className="p-4 w-16 text-center">ابزار</th> 
                                         <th className="p-4 w-24">کد</th>
                                         <th className="p-4">نام قطعه</th>
@@ -208,21 +246,16 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                             </td>
                                         </tr>
                                     ) : bomItems.map((item, idx) => {
-                                        // رندر هر ردیف (والد) و فرزندانش
                                         const renderRow = (part, isParent, parentId = null) => {
                                             const unitPriceUSD = parseFloat(part.toman_price||0) / parseFloat(part.usd_rate||1);
                                             const qty = isParent ? part.required_qty : item.required_qty; 
                                             const rowTotalPriceUSD = unitPriceUSD * parseFloat(qty || 0);
                                             const totalToman = rowTotalPriceUSD * calculationRate;
                                             
-                                            // محاسبه تعداد کل
                                             const totalRequiredInBatch = qty * productionCount;
-                                            
                                             const isLowStock = (part.inventory_qty || 0) < totalRequiredInBatch;
                                             const isSelected = part.isSelected;
                                             const rowStatusClass = isSelected ? 'is-selected' : 'not-selected';
-                                            
-                                            // انیمیشن سواپ
                                             const swapClass = (lastSwappedId === part.part_id) ? 'animate-swap' : '';
 
                                             return (
@@ -232,13 +265,11 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                                     onDragStart={(e)=>isParent && onDragStart(e, idx)} 
                                                     onDragOver={(e)=>isParent && onDragOver(e)} 
                                                     onDrop={(e)=>isParent && onDrop(e, idx)}
-                                                    onDragEnd={isParent ? onDragEnd : undefined} // پایان درگ برای پاک کردن استایل
+                                                    onDragEnd={isParent ? onDragEnd : undefined} 
                                                     className={`bom-item-row hover:bg-white/5 cursor-default group ${rowStatusClass} ${draggedIndex===idx ? 'dragging' : ''} ${swapClass}`}
                                                 >
-                                                    {/* ستون ابزار (ادغام شده) */}
                                                     <td className="p-4 text-center">
                                                         {isParent ? (
-                                                            // ابزارهای والد: درگ و بازشو
                                                             <div className="flex items-center justify-center gap-2">
                                                                 <i data-lucide="grip-vertical" className="w-4 h-4 opacity-30 group-hover:opacity-100 transition-opacity cursor-move text-gray-500"></i>
                                                                 {part.alternatives && part.alternatives.length > 0 && (
@@ -248,7 +279,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                                                 )}
                                                             </div>
                                                         ) : (
-                                                            // ابزار فرزند: دکمه جابجایی کادردار
                                                             <button 
                                                                 onClick={() => toggleSelection(parentId, part.part_id)}
                                                                 className="w-8 h-8 rounded-lg bg-white/5 hover:bg-nexus-primary/20 text-gray-500 hover:text-nexus-accent border border-white/10 hover:border-nexus-primary/50 transition-all flex items-center justify-center mx-auto"
@@ -273,14 +303,14 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                                         </div>
                                                     </td>
 
-                                                    {/* ستون تعداد واحد - واحد کنار عدد */}
+                                                    {/* ستون تعداد واحد - اعمال کلاس no-spinner */}
                                                     {isParent && (
                                                         <td className="p-4 text-center">
                                                             <div className="flex items-center justify-center gap-2">
                                                                 <input 
                                                                     type="number"
                                                                     min="1"
-                                                                    className="w-16 bg-black/40 border border-white/10 rounded-lg py-1 text-center text-white focus:border-nexus-primary outline-none transition-colors font-bold" 
+                                                                    className="w-16 bg-black/40 border border-white/10 rounded-lg py-1 text-center text-white focus:border-nexus-primary outline-none transition-colors font-bold no-spinner" 
                                                                     value={part.required_qty} 
                                                                     onChange={(e)=>updateBOMQty(part.part_id, e.target.value)} 
                                                                 />
@@ -289,7 +319,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                                         </td>
                                                     )}
 
-                                                    {/* ستون تعداد کل - بدون کادر */}
                                                     {isParent && (
                                                         <td className="p-4 text-center">
                                                             <span className="text-nexus-accent font-mono font-bold">
@@ -319,7 +348,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                                                 </button>
                                                             )}
                                                             <button 
-                                                                onClick={()=>removeBOMItem(part.part_id, isParent ? null : parentId)} 
+                                                                onClick={()=>requestDelete(part.part_id, isParent ? null : parentId)} 
                                                                 className="p-2 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
                                                                 title="حذف"
                                                             >
@@ -372,7 +401,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                         <input 
                                             type="number" 
                                             min="0"
-                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white text-center font-bold outline-none focus:border-nexus-primary transition-colors"
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white text-center font-bold outline-none focus:border-nexus-primary transition-colors no-spinner"
                                             placeholder="0"
                                             value={cost.cost} 
                                             onChange={(e) => {const newC=[...extraCosts]; newC[idx].cost=Math.max(0, e.target.value); setExtraCosts(newC);}}
@@ -386,7 +415,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                 </div>
 
                 {/* -----------------------------------------------------------------------------------
-                   [SIDEBAR] سایدبار
+                   [SIDEBAR] سایدبار (4 ستون)
                 ------------------------------------------------------------------------------------ */}
                 <div className="xl:col-span-4 space-y-6 sticky top-8">
                     <div className="glass-panel rounded-[2.5rem] p-8 border border-white/10 shadow-2xl relative overflow-hidden">
@@ -395,6 +424,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                         <DollarWidget />
                         
                         <div className="space-y-4 text-sm relative z-10">
+                            
                             <div className="bg-white/5 rounded-xl p-4 border border-white/5 space-y-2 mb-4">
                                 <div className="flex justify-between items-center text-xs text-gray-400">
                                     <span>تنوع قطعات (گروه):</span>
@@ -419,7 +449,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                 <input 
                                     type="number" 
                                     min="1"
-                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" 
+                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold no-spinner" 
                                     value={productionCount} 
                                     onChange={(e)=>setProductionCount(Math.max(1, e.target.value))} 
                                 />
@@ -429,7 +459,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                 <input 
                                     type="number" 
                                     min="0"
-                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" 
+                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold no-spinner" 
                                     value={conversionRate} 
                                     onChange={(e)=>setConversionRate(Math.max(0, e.target.value))} 
                                 />
@@ -439,7 +469,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                 <input 
                                     type="number" 
                                     min="0"
-                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" 
+                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold no-spinner" 
                                     value={partProfit} 
                                     onChange={(e)=>setPartProfit(Math.max(0, e.target.value))} 
                                 />
