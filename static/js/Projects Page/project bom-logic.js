@@ -2,7 +2,7 @@
  * ====================================================================================================
  * فایل: project-bom-logic.js
  * وظیفه: مدیریت منطق صفحه جزئیات پروژه (BOM)، محاسبات و کسر از انبار
- * توضیحات: اضافه شدن چک isMounted برای جلوگیری از آپدیت استیت روی کامپوننت بسته شده
+ * تغییرات: افزودن قابلیت انتخاب قطعات برای کسر (Checkbox Logic) و آنالیز دقیق
  * ====================================================================================================
  */
 
@@ -25,40 +25,32 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
     const [shortageData, setShortageData] = useState(null);
     const [draggedIndex, setDraggedIndex] = useState(null);
 
-    // وضعیت برای افزودن جایگزین (آیدی والد هدف)
+    // [جدید] وضعیت‌های گزارش و انتخاب کسر از انبار
+    const [deductionReport, setDeductionReport] = useState({ available: [], missing: [] });
+    const [deductionSelection, setDeductionSelection] = useState([]); // لیست آیدی‌های انتخاب شده
+    const [showDeductionModal, setShowDeductionModal] = useState(false);
+
     const [targetParentIdForAlt, setTargetParentIdForAlt] = useState(null);
-    
-    // وضعیت برای انیمیشن سواپ (آیدی قطعه‌ای که تازه جابجا شده)
     const [lastSwappedId, setLastSwappedId] = useState(null);
 
-    // [جدید] وضعیت مودال حذف سفارشی
+    // وضعیت مودال حذف
     const [deleteModal, setDeleteModal] = useState({ 
-        isOpen: false, 
-        id: null, 
-        parentId: null, 
-        title: "", 
-        message: "" 
+        isOpen: false, id: null, parentId: null, title: "", message: "" 
     });
 
-    // رفرنس برای چک کردن وضعیت Mount کامپوننت
     const isMounted = useRef(true);
 
-    // پارامترهای محاسباتی
     const [productionCount, setProductionCount] = useState(1);
     const [conversionRate, setConversionRate] = useState(0);
     const [partProfit, setPartProfit] = useState(0);
-    
-    // نرخ دلار
     const [calculationRate, setCalculationRate] = useState(initialRate || 60000);
 
-    // مدیریت چرخه حیات برای isMounted
     useEffect(() => {
         isMounted.current = true;
         return () => { isMounted.current = false; };
     }, []);
 
     // --- API Calls ---
-
     const loadBOMDetails = useCallback(async () => {
         if (!activeProject?.id) return;
         try {
@@ -75,11 +67,9 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                 setExtraCosts(data.costs || []);
                 setConversionRate(data.project.conversion_rate || 0);
                 setPartProfit(data.project.part_profit || 0);
-            } else if (isMounted.current) {
-                notify.show('خطا در بارگذاری', 'پاسخ سرور نامعتبر بود.', 'error');
             }
         } catch (e) { 
-            if (isMounted.current) notify.show('خطای بحرانی', 'خطا در خواندن جزئیات BOM از دیتابیس', 'error'); 
+            if (isMounted.current) notify.show('خطای بحرانی', 'خطا در دریافت اطلاعات', 'error'); 
         }
     }, [activeProject?.id, fetchAPI]);
 
@@ -99,7 +89,6 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         if (initialRate) setCalculationRate(initialRate);
     }, [initialRate]);
 
-    // پاک کردن وضعیت انیمیشن بعد از اجرا
     useEffect(() => {
         if (lastSwappedId) {
             const timer = setTimeout(() => {
@@ -109,10 +98,9 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         }
     }, [lastSwappedId]);
 
-    // --- Drag & Drop Logic ---
+    // --- Drag & Drop & BOM Logic ---
     const onDragStart = (e, index) => { setDraggedIndex(index); e.dataTransfer.effectAllowed = "move"; };
     const onDragOver = (e) => { e.preventDefault(); };
-    
     const onDrop = (e, index) => {
         e.preventDefault();
         if (draggedIndex === null || draggedIndex === index) return;
@@ -123,128 +111,80 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         setBomItems(newItems);
         setDraggedIndex(null);
     };
+    const onDragEnd = () => setDraggedIndex(null);
 
-    const onDragEnd = () => {
-        setDraggedIndex(null);
-    };
-
-    // --- BOM Item Management ---
     const addPartToBOM = (part) => {
         if (targetParentIdForAlt) {
             const parentIndex = bomItems.findIndex(i => i.part_id === targetParentIdForAlt);
             if (parentIndex !== -1) {
                 const newItems = [...bomItems];
                 const parent = newItems[parentIndex];
-                
                 if (parent.alternatives.find(a => a.part_id === part.id) || parent.part_id === part.id) {
-                    notify.show('تکراری', 'این قطعه قبلاً در این گروه وجود دارد', 'warning');
-                    return;
+                    notify.show('تکراری', 'این قطعه قبلاً وجود دارد', 'warning'); return;
                 }
-
                 parent.alternatives.push({
                     part_id: part.id, val: part.val, part_code: part.part_code,
                     unit: part.unit || 'عدد', package: part.package, watt: part.watt,
                     tolerance: part.tolerance, tech: part.tech, storage_location: part.storage_location,
-                    required_qty: parent.required_qty,
-                    toman_price: parseFloat(part.toman_price || 0),
+                    required_qty: parent.required_qty, toman_price: parseFloat(part.toman_price || 0),
                     usd_rate: parseFloat(part.usd_rate || 1), inventory_qty: part.quantity,
-                    vendor_name: part.vendor_name,
-                    isSelected: false
+                    vendor_name: part.vendor_name, isSelected: false
                 });
                 parent.isExpanded = true;
-                setBomItems(newItems);
-                setSearchInventory("");
-                setTargetParentIdForAlt(null);
-                return;
+                setBomItems(newItems); setSearchInventory(""); setTargetParentIdForAlt(null); return;
             }
         }
-
         const exists = bomItems.find(item => item.part_id === part.id);
-        if (exists) return notify.show('تکراری', 'این قطعه قبلا در لیست موجود است', 'info');
-        
+        if (exists) return notify.show('تکراری', 'این قطعه قبلا موجود است', 'info');
         setBomItems([...bomItems, {
             part_id: part.id, val: part.val, part_code: part.part_code,
             unit: part.unit || 'عدد', package: part.package, watt: part.watt,
             tolerance: part.tolerance, tech: part.tech, storage_location: part.storage_location,
             required_qty: 1, toman_price: parseFloat(part.toman_price || 0),
             usd_rate: parseFloat(part.usd_rate || 1), inventory_qty: part.quantity,
-            vendor_name: part.vendor_name,
-            alternatives: [],
-            isSelected: true,
-            isExpanded: false
+            vendor_name: part.vendor_name, alternatives: [], isSelected: true, isExpanded: false
         }]);
         setSearchInventory("");
     };
 
     const updateBOMQty = (partId, qty) => {
         const val = Math.max(1, parseInt(qty) || 0);
-        setBomItems(bomItems.map(item => {
-            if (item.part_id === partId) return { ...item, required_qty: val };
-            return item;
-        }));
+        setBomItems(bomItems.map(item => item.part_id === partId ? { ...item, required_qty: val } : item));
     };
 
-    // درخواست حذف (باز کردن مودال)
     const requestDelete = (partId, parentId = null) => {
         const title = parentId ? "حذف جایگزین" : "حذف قطعه اصلی";
-        const message = parentId 
-            ? "آیا از حذف این قطعه جایگزین اطمینان دارید؟" 
-            : "آیا از حذف این قطعه و تمام زیرمجموعه‌های آن از لیست BOM اطمینان دارید؟";
-            
-        setDeleteModal({
-            isOpen: true,
-            id: partId,
-            parentId: parentId,
-            title: title,
-            message: message
-        });
+        const message = parentId ? "آیا از حذف این قطعه جایگزین اطمینان دارید؟" : "آیا از حذف این قطعه و تمام زیرمجموعه‌های آن اطمینان دارید؟";
+        setDeleteModal({ isOpen: true, id: partId, parentId: parentId, title: title, message: message });
     };
 
-    // تایید نهایی حذف (اجرای عملیات)
     const confirmDelete = () => {
         const { id, parentId } = deleteModal;
         if (!id) return;
-
         if (parentId) {
             const newItems = [...bomItems];
             const parent = newItems.find(i => i.part_id === parentId);
             if (parent) {
                 parent.alternatives = parent.alternatives.filter(a => a.part_id !== id);
-                if (!parent.isSelected && !parent.alternatives.some(a => a.isSelected)) {
-                    parent.isSelected = true;
-                }
+                if (!parent.isSelected && !parent.alternatives.some(a => a.isSelected)) parent.isSelected = true;
             }
             setBomItems(newItems);
         } else {
             setBomItems(bomItems.filter(item => item.part_id !== id));
         }
-        
-        // بستن مودال
         setDeleteModal({ isOpen: false, id: null, parentId: null, title: "", message: "" });
     };
 
-    // انصراف از حذف
-    const cancelDelete = () => {
-        setDeleteModal({ isOpen: false, id: null, parentId: null, title: "", message: "" });
-    };
-
-    // نگه داشتن تابع قبلی برای سازگاری
-    const removeBOMItem = (partId, parentId = null) => {
-        requestDelete(partId, parentId);
-    };
-
-    const toggleExpand = (partId) => {
-        setBomItems(bomItems.map(item => item.part_id === partId ? { ...item, isExpanded: !item.isExpanded } : item));
-    };
-
+    const cancelDelete = () => setDeleteModal({ isOpen: false, id: null, parentId: null, title: "", message: "" });
+    const removeBOMItem = (partId, parentId = null) => requestDelete(partId, parentId);
+    
+    const toggleExpand = (partId) => setBomItems(bomItems.map(item => item.part_id === partId ? { ...item, isExpanded: !item.isExpanded } : item));
+    
     const toggleSelection = (parentId, childId = null) => {
         const newItems = [...bomItems];
         const parentIndex = newItems.findIndex(i => i.part_id === parentId);
-        
         if (parentIndex === -1) return;
-
         const parent = newItems[parentIndex];
-
         if (childId === null) {
             if (!parent.isSelected) {
                 parent.isSelected = true;
@@ -253,28 +193,13 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
             }
             return;
         }
-
         const childIndex = parent.alternatives.findIndex(a => a.part_id === childId);
         if (childIndex === -1) return;
-
         const child = parent.alternatives[childIndex];
-
         const newParent = {
-            ...child,
-            required_qty: parent.required_qty,
-            isSelected: true,
-            isExpanded: true,
-            alternatives: [
-                ...parent.alternatives.filter(a => a.part_id !== childId),
-                {
-                    ...parent,
-                    isSelected: false,
-                    alternatives: [],
-                    isExpanded: false
-                }
-            ]
+            ...child, required_qty: parent.required_qty, isSelected: true, isExpanded: true,
+            alternatives: [...parent.alternatives.filter(a => a.part_id !== childId), { ...parent, isSelected: false, alternatives: [], isExpanded: false }]
         };
-
         newItems[parentIndex] = newParent;
         setBomItems(newItems);
         setLastSwappedId(child.part_id);
@@ -285,38 +210,132 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         const rateToUse = parseFloat(calculationRate) || 0;
         let bomUnitUSD = 0;
         let totalPartsCount = 0;
-
         bomItems.forEach(item => {
-            let activeItem = item.isSelected ? item : item.alternatives.find(a => a.isSelected);
-            if (!activeItem) activeItem = item;
-
+            let activeItem = item.isSelected ? item : item.alternatives.find(a => a.isSelected) || item;
             const price = parseFloat(activeItem.toman_price || 0) / parseFloat(activeItem.usd_rate || 1);
             const qty = parseFloat(item.required_qty || 0);
-
             bomUnitUSD += (price * qty);
             totalPartsCount += (qty * productionCount);
         });
-
         const extraUnitUSD = extraCosts.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
         const totalUnitUSD = bomUnitUSD + extraUnitUSD;
-        
         const unitBaseToman = totalUnitUSD * rateToUse;
         const afterConversion = unitBaseToman * (1 + (parseFloat(conversionRate)||0)/100);
         const finalUnitToman = afterConversion * (1 + (parseFloat(partProfit)||0)/100);
-        const totalProfitToman = (finalUnitToman - afterConversion) * productionCount;
-
         return {
-            usdUnit: bomUnitUSD, 
-            usdBatch: bomUnitUSD * productionCount,
-            totalProductionUSD: totalUnitUSD * productionCount,
-            totalProductionToman: finalUnitToman * productionCount,
-            unitFinalToman: finalUnitToman,
-            profitBatchUSD: rateToUse > 0 ? totalProfitToman / rateToUse : 0,
-            profitBatchToman: totalProfitToman,
-            variety: bomItems.length,
-            totalParts: totalPartsCount
+            usdUnit: bomUnitUSD, usdBatch: bomUnitUSD * productionCount,
+            totalProductionUSD: totalUnitUSD * productionCount, totalProductionToman: finalUnitToman * productionCount,
+            unitFinalToman: finalUnitToman, profitBatchUSD: rateToUse > 0 ? ((finalUnitToman - afterConversion) * productionCount) / rateToUse : 0,
+            profitBatchToman: (finalUnitToman - afterConversion) * productionCount,
+            variety: bomItems.length, totalParts: totalPartsCount
         };
     }, [bomItems, extraCosts, productionCount, conversionRate, partProfit, calculationRate]);
+
+    // [جدید] توابع مدیریت کسر از انبار
+    const analyzeDeduction = () => {
+        const available = [];
+        const missing = [];
+        const allIds = [];
+
+        bomItems.forEach(item => {
+            // فقط آیتم فعال
+            const activeItem = item.isSelected ? item : item.alternatives.find(a => a.isSelected);
+            
+            if (activeItem) {
+                const totalRequired = (item.required_qty || 0) * productionCount;
+                const currentInventory = activeItem.inventory_qty || 0;
+                
+                const reportItem = {
+                    id: activeItem.part_id,
+                    name: activeItem.val,
+                    code: activeItem.part_code,
+                    needed: totalRequired,
+                    inventory: currentInventory,
+                    location: activeItem.storage_location,
+                    // محاسبه کسری دقیق
+                    shortage: Math.max(0, totalRequired - currentInventory)
+                };
+
+                if (currentInventory >= totalRequired) {
+                    available.push(reportItem);
+                } else {
+                    missing.push(reportItem);
+                }
+                allIds.push(activeItem.part_id);
+            }
+        });
+
+        // پیش‌فرض: همه تیک خورده باشند
+        setDeductionSelection(allIds);
+        setDeductionReport({ available, missing });
+        setShowDeductionModal(true);
+    };
+
+    const toggleDeductionItem = (id) => {
+        setDeductionSelection(prev => {
+            if (prev.includes(id)) return prev.filter(i => i !== id);
+            return [...prev, id];
+        });
+    };
+
+    const handleDeduct = async (force = false, user) => {
+        setIsDeducting(true);
+        try {
+            // فقط قطعاتی که تیک خورده‌اند ارسال می‌شوند
+            const { ok, data } = await fetchAPI('/projects/deduct', {
+                method: 'POST',
+                body: { 
+                    project_id: activeProject.id, 
+                    count: productionCount, 
+                    force, 
+                    username: user?.username || 'Admin',
+                    selected_part_ids: deductionSelection // ارسال لیست انتخابی
+                }
+            });
+
+            if (ok && data.success) {
+                notify.show('موفقیت', `موجودی انبار (برای ${deductionSelection.length} قطعه انتخاب شده) کسر شد.`, 'success');
+                setShortageData(null); 
+                setShowDeductionModal(false); // بستن مودال
+                loadInventory(); 
+                loadBOMDetails();
+            } else if (data?.status === 'shortage') {
+                // اگر سرور همچنان ارور کسری داد (نباید پیش بیاید اگر لیست درست باشد)
+                setShortageData(data.shortages);
+                setShowDeductionModal(false);
+            } else {
+                notify.show('خطا', (data && data.error) || 'خطا در عملیات', 'error');
+            }
+        } catch (e) { notify.show('خطا', 'خطای شبکه', 'error'); }
+        finally { if (isMounted.current) setIsDeducting(false); }
+    };
+
+    const saveBOMDetails = async () => {
+        setIsSaving(true);
+        try {
+            const bomTotalUSD = bomItems.reduce((sum, item) => {
+                 const active = item.isSelected ? item : item.alternatives.find(a => a.isSelected) || item;
+                 const price = parseFloat(active.toman_price || 0);
+                 let rate = parseFloat(active.usd_rate); if (!rate) rate = 1;
+                 return sum + ((price / rate) * parseFloat(item.required_qty || 0));
+            }, 0);
+            const extraTotalUSD = extraCosts.reduce((s, i) => s + (parseFloat(i.cost)||0), 0);
+            const totalBatchUSD = (bomTotalUSD + extraTotalUSD) * productionCount;
+            const totalCount = bomItems.reduce((s, i) => s + (parseFloat(i.required_qty)||0), 0) * productionCount;
+
+            const { ok, data } = await fetchAPI('/projects/save_details', {
+                method: 'POST',
+                body: {
+                    project_id: activeProject.id, bom: bomItems, costs: extraCosts,
+                    conversion_rate: conversionRate, part_profit: partProfit,
+                    total_price_usd: totalBatchUSD, total_count: totalCount
+                }
+            });
+            if (ok) { notify.show('موفقیت', 'ذخیره شد.', 'success'); return true; }
+        } catch (e) { notify.show('خطا', 'خطای شبکه', 'error'); } 
+        finally { if (isMounted.current) setIsSaving(false); }
+        return false;
+    };
 
     const handlePrintBOM = () => {
         const printWindow = window.open('', '_blank');
@@ -450,69 +469,6 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         printWindow.document.close();
     };
 
-    const saveBOMDetails = async () => {
-        setIsSaving(true);
-        try {
-            const bomTotalUSD = bomItems.reduce((sum, item) => {
-                const active = item.isSelected ? item : item.alternatives.find(a => a.isSelected) || item;
-                const price = parseFloat(active.toman_price || 0);
-                let rate = parseFloat(active.usd_rate);
-                if (!rate || rate <= 0) rate = 1; 
-                const qty = parseFloat(item.required_qty || 0);
-                return sum + ((price / rate) * qty);
-            }, 0);
-            
-            const extraTotalUSD = extraCosts.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
-            const unitTotalUSD = bomTotalUSD + extraTotalUSD;
-            const totalBatchUSD = unitTotalUSD * productionCount;
-            const totalCount = bomItems.reduce((sum, item) => sum + (parseFloat(item.required_qty) || 0), 0) * productionCount;
-
-            const { ok, data } = await fetchAPI('/projects/save_details', {
-                method: 'POST',
-                body: {
-                    project_id: activeProject.id, 
-                    bom: bomItems, 
-                    costs: extraCosts,
-                    conversion_rate: conversionRate, part_profit: partProfit,
-                    total_price_usd: totalBatchUSD || 0, total_count: totalCount || 0
-                }
-            });
-
-            if (ok) { 
-                notify.show('موفقیت', 'پروژه با موفقیت ذخیره شد.', 'success'); 
-                return true; 
-            } else {
-                notify.show('خطا', (data && data.error) || 'سرور خطا داد اما پیامی نفرستاد.', 'error');
-            }
-        } catch (e) { notify.show('خطا', 'مشکل در ارتباط با سرور (کنسول را چک کنید)', 'error'); } 
-        finally { 
-            // اصلاح: فقط اگر کامپوننت هنوز باز است، state تغییر کند
-            if (isMounted.current) setIsSaving(false); 
-        }
-        return false;
-    };
-
-    const handleDeduct = async (force = false, user) => {
-        setIsDeducting(true);
-        try {
-            const { ok, data } = await fetchAPI('/projects/deduct', {
-                method: 'POST',
-                body: { project_id: activeProject.id, count: productionCount, force, username: user?.username || 'Admin' }
-            });
-            if (ok && data.success) {
-                notify.show('موفقیت', `موجودی انبار برای تولید ${productionCount} واحد کسر شد.`, 'success');
-                setShortageData(null); loadInventory(); loadBOMDetails();
-            } else if (data?.status === 'shortage') {
-                setShortageData(data.shortages);
-            } else {
-                notify.show('خطا', (data && data.error) || 'خطا در انجام عملیات برداشت', 'error');
-            }
-        } catch (e) { notify.show('خطا', 'مشکل در ارتباط با سرور هنگام کسر موجودی', 'error'); }
-        finally { 
-            if (isMounted.current) setIsDeducting(false); 
-        }
-    };
-
     const filteredInventory = inventory.filter(p => p.val.toLowerCase().includes(searchInventory.toLowerCase()) || p.part_code.toLowerCase().includes(searchInventory.toLowerCase())).slice(0, 10);
 
     return {
@@ -521,17 +477,16 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         isSaving, isDeducting, shortageData, setShortageData,
         productionCount, setProductionCount, calculationRate, setCalculationRate,
         conversionRate, setConversionRate, partProfit, setPartProfit,
-        draggedIndex, lastSwappedId, 
+        draggedIndex, lastSwappedId, targetParentIdForAlt, setTargetParentIdForAlt,
         
-        targetParentIdForAlt, setTargetParentIdForAlt,
         addPartToBOM, updateBOMQty, removeBOMItem,
-        // اکسپورت‌های مودال حذف
         deleteModal, requestDelete, confirmDelete, cancelDelete,
         
-        toggleExpand, toggleSelection,
-        setExtraCosts, saveBOMDetails, handleDeduct,
-        handlePrintBOM, 
-        onDragStart, onDragOver, onDrop, onDragEnd, 
-        totals, toShamsi
+        // اکسپورت‌های جدید
+        deductionReport, showDeductionModal, setShowDeductionModal, 
+        analyzeDeduction, deductionSelection, toggleDeductionItem,
+        
+        toggleExpand, toggleSelection, setExtraCosts, saveBOMDetails, handleDeduct, handlePrintBOM, 
+        onDragStart, onDragOver, onDrop, onDragEnd, totals, toShamsi
     };
 };

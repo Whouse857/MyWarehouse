@@ -2,15 +2,12 @@
  * ====================================================================================================
  * فایل: ProjectBOM.jsx
  * وظیفه: کامپوننت رابط کاربری ویرایشگر BOM
- * توضیحات: رفع باگ removeChild در دکمه ذخیره + مودال حذف شیک
+ * توضیحات: مودال کسر از انبار با قابلیت انتخاب (Checkbox) و رنگ‌بندی سبز/قرمز
  * ====================================================================================================
  */
 
 const { useEffect, useRef } = React;
 
-// ----------------------------------------------------------------------------------------------------
-// [Sub-Component] بج‌های مشخصات فنی
-// ----------------------------------------------------------------------------------------------------
 const SpecBadges = ({ item }) => (
     <div className="flex flex-wrap gap-1 mt-1">
         {item.package && <span className="spec-badge badge-blue">{item.package}</span>}
@@ -20,18 +17,11 @@ const SpecBadges = ({ item }) => (
     </div>
 );
 
-// ----------------------------------------------------------------------------------------------------
-// [Sub-Component] مودال تایید حذف (مشابه Entry Page)
-// ----------------------------------------------------------------------------------------------------
 const DeleteConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
     if (!isOpen) return null;
-    
     return (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in" onClick={onCancel}>
-            <div 
-                className="glass-panel border border-white/10 p-6 rounded-2xl max-w-md w-full shadow-2xl animate-scale-in text-right" 
-                onClick={e => e.stopPropagation()}
-            >
+            <div className="glass-panel border border-white/10 p-6 rounded-2xl max-w-md w-full shadow-2xl animate-scale-in text-right" onClick={e => e.stopPropagation()}>
                 <div className="flex flex-col items-center text-center gap-4">
                     <div className="w-16 h-16 rounded-full bg-rose-500/10 flex items-center justify-center mb-2">
                         <i data-lucide="trash-2" className="w-8 h-8 text-rose-500"></i>
@@ -39,19 +29,165 @@ const DeleteConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel }
                     <h3 className="text-xl font-bold text-white">{title}</h3>
                     <p className="text-gray-300 text-sm leading-relaxed">{message}</p>
                 </div>
-                
                 <div className="flex gap-3 mt-8">
+                    <button onClick={onCancel} className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-bold transition border border-white/5">انصراف</button>
+                    <button onClick={onConfirm} className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition shadow-lg shadow-rose-900/20">تایید و حذف</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ----------------------------------------------------------------------------------------------------
+// [کامپوننت جدید] مودال گزارش کسر از انبار با قابلیت انتخاب
+// ----------------------------------------------------------------------------------------------------
+const DeductionReportModal = ({ isOpen, report, selection, onToggle, onClose, onConfirm, isProcessing }) => {
+    if (!isOpen) return null;
+    const hasShortage = report.missing.length > 0;
+    const selectedCount = selection.length;
+    
+    // آیا در بین انتخاب شده‌ها، موردی هست که کسری داشته باشد؟
+    const isSelectedShortage = report.missing.some(item => selection.includes(item.id));
+
+    return (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in" onClick={!isProcessing ? onClose : undefined}>
+            <div className="glass-panel border border-white/10 p-0 rounded-[2rem] max-w-4xl w-full shadow-2xl animate-scale-in text-right overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                
+                {/* Header */}
+                <div className="p-6 border-b border-white/5 flex items-center gap-4 bg-[#0f172a]">
+                    <div className="p-3 rounded-2xl bg-nexus-primary/20 text-nexus-accent">
+                        <i data-lucide="clipboard-list" className="w-8 h-8"></i>
+                    </div>
+                    <div>
+                        <h3 className="text-2xl font-black text-white">بررسی نهایی کسر از انبار</h3>
+                        <p className="text-gray-400 text-sm mt-1">
+                            لطفا قطعاتی که می‌خواهید کسر شوند را انتخاب کنید. ({selectedCount} مورد انتخاب شده)
+                        </p>
+                    </div>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto custom-scroll p-6 space-y-8 bg-[#1e293b]/50">
+                    
+                    {/* بخش قطعات آماده (سبز) */}
+                    {report.available.length > 0 && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-3 text-emerald-400 font-bold text-sm bg-emerald-500/10 p-2 rounded-lg inline-flex border border-emerald-500/20">
+                                <i data-lucide="check-circle-2" className="w-4 h-4"></i>
+                                <span>موجودی کافی ({report.available.length})</span>
+                            </div>
+                            <div className="bg-black/20 rounded-2xl border border-emerald-500/20 overflow-hidden">
+                                <table className="w-full text-xs">
+                                    <thead className="bg-emerald-500/5 text-emerald-200">
+                                        <tr>
+                                            <th className="p-3 w-10 text-center">#</th>
+                                            <th className="p-3 text-right">نام قطعه</th>
+                                            <th className="p-3 text-center">کد</th>
+                                            <th className="p-3 text-center">نیاز</th>
+                                            <th className="p-3 text-center">موجودی</th>
+                                            <th className="p-3 text-center">وضعیت</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 text-gray-300">
+                                        {report.available.map(item => (
+                                            <tr key={item.id} className={`hover:bg-white/5 transition-colors ${selection.includes(item.id) ? 'bg-emerald-500/5' : 'opacity-60'}`}>
+                                                <td className="p-3 text-center">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selection.includes(item.id)} 
+                                                        onChange={() => onToggle(item.id)}
+                                                        className="w-4 h-4 rounded border-gray-500 accent-emerald-500 cursor-pointer"
+                                                    />
+                                                </td>
+                                                <td className="p-3 font-bold text-white">{item.name}</td>
+                                                <td className="p-3 text-center font-mono text-[10px]">{item.code}</td>
+                                                <td className="p-3 text-center text-white font-bold">{item.needed}</td>
+                                                <td className="p-3 text-center">{item.inventory}</td>
+                                                <td className="p-3 text-center text-emerald-400 font-bold">تامین شد</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* بخش کسری‌ها (قرمز) */}
+                    {hasShortage && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-3 text-rose-400 font-bold text-sm bg-rose-500/10 p-2 rounded-lg inline-flex border border-rose-500/20">
+                                <i data-lucide="alert-triangle" className="w-4 h-4"></i>
+                                <span>دارای کسری ({report.missing.length})</span>
+                            </div>
+                            <div className="bg-black/20 rounded-2xl border border-rose-500/20 overflow-hidden">
+                                <table className="w-full text-xs">
+                                    <thead className="bg-rose-500/5 text-rose-200">
+                                        <tr>
+                                            <th className="p-3 w-10 text-center">#</th>
+                                            <th className="p-3 text-right">نام قطعه</th>
+                                            <th className="p-3 text-center">کد</th>
+                                            <th className="p-3 text-center">نیاز</th>
+                                            <th className="p-3 text-center">موجودی</th>
+                                            <th className="p-3 text-center">مقدار کسری</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 text-gray-300">
+                                        {report.missing.map(item => (
+                                            <tr key={item.id} className={`hover:bg-white/5 transition-colors ${selection.includes(item.id) ? 'bg-rose-500/5' : 'opacity-60'}`}>
+                                                <td className="p-3 text-center">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selection.includes(item.id)} 
+                                                        onChange={() => onToggle(item.id)}
+                                                        className="w-4 h-4 rounded border-gray-500 accent-rose-500 cursor-pointer"
+                                                    />
+                                                </td>
+                                                <td className="p-3 font-bold text-white">{item.name}</td>
+                                                <td className="p-3 text-center font-mono text-[10px]">{item.code}</td>
+                                                <td className="p-3 text-center">{item.needed}</td>
+                                                <td className="p-3 text-center">{item.inventory}</td>
+                                                <td className="p-3 text-center text-rose-500 font-black">{item.shortage}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p className="text-[11px] text-rose-400/80 mt-2 mr-2">
+                                * توجه: با انتخاب موارد قرمز، سیستم تلاش می‌کند موجودی فعلی را صفر کند (برداشت اجباری).
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="p-6 border-t border-white/5 bg-black/40 flex gap-4 backdrop-blur-sm">
                     <button 
-                        onClick={onCancel} 
-                        className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-bold transition border border-white/5"
+                        onClick={onClose} 
+                        disabled={isProcessing}
+                        className="flex-1 py-4 rounded-xl bg-white/5 text-gray-300 font-bold hover:bg-white/10 transition-all border border-white/5 disabled:opacity-50"
                     >
                         انصراف
                     </button>
                     <button 
-                        onClick={onConfirm} 
-                        className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition shadow-lg shadow-rose-900/20"
+                        onClick={() => onConfirm(isSelectedShortage)} 
+                        disabled={isProcessing || selectedCount === 0}
+                        className={`flex-[2] py-4 rounded-xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${isSelectedShortage ? 'bg-gradient-to-r from-amber-600 to-orange-600' : 'bg-gradient-to-r from-emerald-600 to-teal-600'}`}
                     >
-                        تایید و حذف
+                        {isProcessing ? (
+                             <span key="loading" className="flex items-center gap-2">
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                <span>در حال پردازش...</span>
+                            </span>
+                        ) : (
+                            <span key="idle" className="flex items-center gap-2">
+                                <i data-lucide={isSelectedShortage ? "alert-circle" : "check-circle-2"} className="w-5 h-5"></i>
+                                <span>
+                                    {isSelectedShortage 
+                                        ? `کسر اجباری موارد انتخاب شده (${selectedCount})` 
+                                        : `تایید و کسر موارد انتخاب شده (${selectedCount})`}
+                                </span>
+                            </span>
+                        )}
                     </button>
                 </div>
             </div>
@@ -72,9 +208,12 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
         
         targetParentIdForAlt, setTargetParentIdForAlt,
         addPartToBOM, updateBOMQty, removeBOMItem, 
-        // توابع مودال حذف
         deleteModal, requestDelete, confirmDelete, cancelDelete,
         
+        // props جدید مودال کسر
+        deductionReport, showDeductionModal, setShowDeductionModal, 
+        analyzeDeduction, deductionSelection, toggleDeductionItem,
+
         toggleExpand, toggleSelection,
         setExtraCosts, saveBOMDetails, handleDeduct,
         handlePrintBOM, 
@@ -86,13 +225,19 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
 
     useEffect(() => {
         if (window.lucide) setTimeout(() => window.lucide.createIcons(), 100);
-    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt, deleteModal, isSaving , isDeducting]);
+    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt, deleteModal, isSaving , isDeducting, showDeductionModal]);
 
     useEffect(() => {
         if (targetParentIdForAlt && searchInputRef.current) {
             searchInputRef.current.focus();
         }
     }, [targetParentIdForAlt]);
+
+    // هندلر تایید نهایی مودال
+    const handleDeductionConfirm = async (hasShortage) => {
+        // force=true اگر آیتم کسری انتخاب شده باشد
+        await handleDeduct(hasShortage, user);
+    };
 
     const DollarWidget = () => (
         <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 mb-6 shadow-lg">
@@ -107,25 +252,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                 value={calculationRate} 
                 onChange={(e) => setCalculationRate(Math.max(0, parseInt(e.target.value) || 0))} 
             />
-            
-            <div className="grid grid-cols-2 gap-2 mt-1">
-                <button 
-                    onClick={() => serverRate?.price > 0 && setCalculationRate(serverRate.price)} 
-                    className="text-[10px] bg-white/5 p-2 rounded text-gray-300 hover:text-emerald-400 border border-transparent hover:border-emerald-500/20 transition-all flex flex-col items-center gap-1"
-                    title="استفاده از نرخ آنلاین سرور"
-                >
-                    <span className="font-bold">آنلاین</span>
-                    <span className="font-mono text-[9px]">{serverRate?.price ? serverRate.price.toLocaleString() : '---'}</span>
-                </button>
-                <button 
-                    onClick={() => config?.['General']?.manual_usd_price && setCalculationRate(config['General'].manual_usd_price)} 
-                    className="text-[10px] bg-white/5 p-2 rounded text-gray-300 hover:text-blue-400 border border-transparent hover:border-blue-500/20 transition-all flex flex-col items-center gap-1"
-                    title="استفاده از نرخ دستی تنظیمات"
-                >
-                    <span className="font-bold">دستی</span>
-                    <span className="font-mono text-[9px]">{config?.['General']?.manual_usd_price ? parseInt(config['General'].manual_usd_price).toLocaleString() : '---'}</span>
-                </button>
-            </div>
         </div>
     );
 
@@ -138,6 +264,16 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                 message={deleteModal.message}
                 onConfirm={confirmDelete}
                 onCancel={cancelDelete}
+            />
+
+            <DeductionReportModal 
+                isOpen={showDeductionModal}
+                report={deductionReport}
+                selection={deductionSelection}
+                onToggle={toggleDeductionItem}
+                onClose={() => setShowDeductionModal(false)}
+                onConfirm={handleDeductionConfirm}
+                isProcessing={isDeducting}
             />
 
             <div className="flex items-center justify-between mb-8 pb-6 border-b border-white/5">
@@ -161,7 +297,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                     {isSaving ? (
                         <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
                     ) : (
-                        // اصلاح: قرار دادن آیکون در span برای جلوگیری از خطای removeChild
                         <span className="flex items-center gap-2">
                             <i data-lucide="save" className="w-5 h-5 text-nexus-accent"></i>
                             <span>ذخیره و بازگشت</span>
@@ -414,6 +549,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                         
                         <DollarWidget />
                         
+                        {/* Summary Widget Content */}
                         <div className="space-y-4 text-sm relative z-10">
                             
                             <div className="bg-white/5 rounded-xl p-4 border border-white/5 space-y-2 mb-4">
@@ -504,18 +640,16 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                     </div>
                     
                     <button 
-                        onClick={()=>handleDeduct(false, user)} 
-                        disabled={isDeducting} 
+                        onClick={analyzeDeduction}
+                        disabled={isDeducting || isSaving} 
                         className="w-full py-5 rounded-[2rem] bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black shadow-xl shadow-emerald-900/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
                     >
                         {isDeducting ? (
-                            // اضافه کردن key="loading"
                             <span key="loading" className="flex items-center gap-2">
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                 <span>در حال پردازش...</span>
                             </span>
                         ) : (
-                            // اضافه کردن key="idle"
                             <span key="idle" className="flex items-center gap-2">
                                 <i data-lucide="package-minus" className="w-6 h-6 group-hover:rotate-12 transition-transform"></i>
                                 <span>کسر موجودی از انبار</span>
@@ -524,60 +658,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                     </button>
                 </div>
             </div>
-
-            {shortageData && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-                    <div className="glass-panel border border-rose-500/30 p-8 rounded-[3rem] max-w-2xl w-full text-right shadow-2xl shadow-rose-900/20 animate-in slide-in-from-bottom-10">
-                        <div className="flex items-center gap-3 mb-6 border-b border-white/5 pb-4">
-                            <div className="p-3 bg-rose-500/20 rounded-2xl text-rose-500">
-                                <i data-lucide="alert-triangle" className="w-8 h-8"></i>
-                            </div>
-                            <div>
-                                <h3 className="text-2xl font-black text-white text-rose-500">کسری موجودی انبار!</h3>
-                                <p className="text-gray-400 text-sm mt-1">امکان کسر کامل قطعات زیر وجود ندارد:</p>
-                            </div>
-                        </div>
-
-                        <div className="bg-black/40 rounded-2xl p-1 mb-8 border border-white/5">
-                            <div className="max-h-[300px] overflow-y-auto custom-scroll">
-                                <table className="w-full text-sm">
-                                    <thead className="text-xs text-gray-500 border-b border-white/5 bg-white/5">
-                                        <tr>
-                                            <th className="py-3 px-4 text-right">نام قطعه</th>
-                                            <th className="py-3 text-center">کسری</th>
-                                            <th className="py-3 text-left pl-4">محل انبار</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/5">
-                                        {shortageData.map((s, i) => (
-                                            <tr key={i} className="hover:bg-rose-500/5">
-                                                <td className="py-3 px-4 text-white font-bold">{s.val}</td>
-                                                <td className="py-3 text-center font-black text-rose-500 bg-rose-500/10 rounded-lg">{s.missing}</td>
-                                                <td className="py-3 text-left pl-4 font-mono text-nexus-accent">{s.location || 'نامشخص'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-4">
-                            <button 
-                                onClick={()=>setShortageData(null)} 
-                                className="flex-1 py-4 rounded-2xl bg-white/5 text-gray-300 font-bold hover:bg-white/10 transition-all border border-white/5"
-                            >
-                                انصراف
-                            </button>
-                            <button 
-                                onClick={()=>handleDeduct(true, user)} 
-                                className="flex-1 py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-700 text-white font-black shadow-lg transition-all active:scale-95"
-                            >
-                                برداشت اجباری موجودی فعلی
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
