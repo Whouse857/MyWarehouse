@@ -2,7 +2,7 @@
  * ====================================================================================================
  * فایل: ProjectBOM.jsx
  * وظیفه: کامپوننت رابط کاربری ویرایشگر BOM
- * توضیحات: نسخه نهایی و اصلاح شده (بازگردانی قیمت تکی واحد + آمار کامل سایدبار)
+ * توضیحات: نسخه نهایی و اصلاح شده (بازگردانی قیمت تکی واحد + آمار کامل سایدبار + اعتبارسنجی ورودی‌ها)
  * ====================================================================================================
  */
 
@@ -206,10 +206,11 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                                 <td className="p-4 text-center text-xs text-gray-400">{item.unit || 'عدد'}</td>
                                                 <td className="p-4 text-center">
                                                     <input 
-                                                        type="number" 
+                                                        type="number"
+                                                        min="1"
                                                         className="w-16 bg-black/40 border border-white/10 rounded-lg py-1 text-center text-white focus:border-nexus-primary outline-none transition-colors font-bold" 
                                                         value={item.required_qty} 
-                                                        onChange={(e)=>updateBOMQty(item.part_id, e.target.value)} 
+                                                        onChange={(e)=>updateBOMQty(item.part_id, Math.max(1, e.target.value))} 
                                                     />
                                                 </td>
                                                 <td className={`p-4 text-center font-bold ${isLowStock ? 'text-rose-500' : 'text-emerald-500'}`}>
@@ -258,10 +259,11 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">$</span>
                                         <input 
                                             type="number" 
+                                            min="0"
                                             className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white text-center font-bold outline-none focus:border-nexus-primary transition-colors"
                                             placeholder="0"
                                             value={cost.cost} 
-                                            onChange={(e) => {const newC=[...extraCosts]; newC[idx].cost=e.target.value; setExtraCosts(newC);}}
+                                            onChange={(e) => {const newC=[...extraCosts]; newC[idx].cost=Math.max(0, e.target.value); setExtraCosts(newC);}}
                                         />
                                     </div>
                                     <button onClick={() => setExtraCosts(extraCosts.filter((_, i) => i !== idx))} className="p-2 text-gray-600 hover:text-rose-400 transition-colors"><i data-lucide="x" className="w-4 h-4"></i></button>
@@ -306,15 +308,33 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                             {/* ورودی‌های محاسباتی */}
                             <div className="flex justify-between items-center text-gray-400 hover:text-white transition-colors">
                                 <span>تعداد واحد تولید:</span>
-                                <input type="number" className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" value={productionCount} onChange={(e)=>setProductionCount(Math.max(1, e.target.value))} />
+                                <input 
+                                    type="number" 
+                                    min="1"
+                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" 
+                                    value={productionCount} 
+                                    onChange={(e)=>setProductionCount(Math.max(1, e.target.value))} 
+                                />
                             </div>
                             <div className="flex justify-between items-center text-gray-400 hover:text-white transition-colors">
                                 <span>نرخ تسعیر (%):</span>
-                                <input type="number" className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" value={conversionRate} onChange={(e)=>setConversionRate(e.target.value)} />
+                                <input 
+                                    type="number" 
+                                    min="0"
+                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" 
+                                    value={conversionRate} 
+                                    onChange={(e)=>setConversionRate(Math.max(0, e.target.value))} 
+                                />
                             </div>
                             <div className="flex justify-between items-center text-gray-400 hover:text-white transition-colors">
                                 <span>سود قطعه (%):</span>
-                                <input type="number" className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" value={partProfit} onChange={(e)=>setPartProfit(e.target.value)} />
+                                <input 
+                                    type="number" 
+                                    min="0"
+                                    className="w-16 bg-black/40 text-center text-white rounded-lg border border-white/5 focus:border-nexus-primary outline-none py-1 font-bold" 
+                                    value={partProfit} 
+                                    onChange={(e)=>setPartProfit(Math.max(0, e.target.value))} 
+                                />
                             </div>
                             
                             {/* باکس نمایش سود */}
