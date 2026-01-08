@@ -86,7 +86,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
 
     useEffect(() => {
         if (window.lucide) setTimeout(() => window.lucide.createIcons(), 100);
-    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt, deleteModal, isSaving]);
+    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt, deleteModal, isSaving , isDeducting]);
 
     useEffect(() => {
         if (targetParentIdForAlt && searchInputRef.current) {
@@ -509,15 +509,17 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                         className="w-full py-5 rounded-[2rem] bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black shadow-xl shadow-emerald-900/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
                     >
                         {isDeducting ? (
-                            <>
+                            // اضافه کردن key="loading"
+                            <span key="loading" className="flex items-center gap-2">
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                 <span>در حال پردازش...</span>
-                            </>
+                            </span>
                         ) : (
-                            <>
+                            // اضافه کردن key="idle"
+                            <span key="idle" className="flex items-center gap-2">
                                 <i data-lucide="package-minus" className="w-6 h-6 group-hover:rotate-12 transition-transform"></i>
                                 <span>کسر موجودی از انبار</span>
-                            </>
+                            </span>
                         )}
                     </button>
                 </div>
