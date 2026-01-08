@@ -1154,50 +1154,65 @@ def register_routes(app, server_state):
     # 4. دریافت اطلاعات کامل پروژه (BOM + Costs)
     @app.route('/api/projects/<int:id>/details', methods=['GET'])
     def get_project_details(id: int):
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db_connection(); cursor = conn.cursor(dictionary=True)
         try:
+            # 1. دریافت اطلاعات اصلی پروژه
             cursor.execute("SELECT * FROM projects WHERE id=%s", (id,))
             project = cursor.fetchone()
             if not project: return jsonify({"error": "پروژه یافت نشد"}), 404
             
-            # تبدیل تاریخ‌های پروژه به رشته
+            # تبدیل تاریخ‌ها به رشته
             if project.get('last_modified'): project['last_modified'] = str(project['last_modified'])
             if project.get('created_at'): project['created_at'] = str(project['created_at'])
 
-            # اصلاحیه در routes.py -> تابع get_project_details
+            # 2. دریافت لیست قطعات (BOM) با اطلاعات تکمیلی از جدول قطعات
+            # نکته مهم: ستون parent_part_id برای تشخیص زیرمجموعه‌ها اضافه شده است
+            # [اصلاح]: p.unit حذف شد تا خطای Unknown column برطرف شود
             bom_query = """
-                SELECT 
-                    pb.id as bom_id, pb.quantity as required_qty, pb.sort_order,
-                    p.id as part_id, p.val, p.part_code, p.package, p.toman_price, p.usd_rate, 
-                    p.storage_location, p.quantity as inventory_qty, p.type, p.watt, p.tolerance, p.tech
-                FROM project_bom pb
-                JOIN parts p ON pb.part_id = p.id
+                SELECT pb.id as bom_id, pb.quantity as required_qty, pb.sort_order, pb.parent_part_id,
+                       p.id as part_id, p.val, p.part_code, p.package, p.toman_price, p.usd_rate, 
+                       p.storage_location, p.quantity as inventory_qty, p.type, p.watt, p.tolerance, p.tech
+                FROM project_bom pb JOIN parts p ON pb.part_id = p.id
                 WHERE pb.project_id = %s
-                ORDER BY pb.sort_order ASC
+                ORDER BY pb.sort_order ASC, pb.id ASC
             """
             cursor.execute(bom_query, (id,))
-            bom_list = cursor.fetchall()
+            flat_bom = cursor.fetchall()
             
-            # تبدیل مقادیر در لیست قطعات (حتی اگر لیست خالی باشد این کد خطا نمی‌دهد)
-            for item in bom_list:
+            # 3. تبدیل لیست خطی به ساختار درختی (Tree Structure)
+            bom_tree = []
+            lookup = {}
+            
+            # مرحله اول: شناسایی والدها و تبدیل داده‌های عددی
+            for item in flat_bom:
+                # تبدیل مقادیر Decimal به float برای سازگاری با JSON
                 for key in item:
-                    if type(item[key]).__name__ == 'Decimal':
-                        item[key] = float(item[key])
-                    elif hasattr(item[key], 'isoformat'):
-                        item[key] = str(item[key])
+                    if type(item[key]).__name__ == 'Decimal': item[key] = float(item[key])
+                    elif hasattr(item[key], 'isoformat'): item[key] = str(item[key])
+                
+                # اگر parent_part_id ندارد، یعنی یک ردیف اصلی (والد) است
+                if not item['parent_part_id']:
+                    item['alternatives'] = [] # آماده‌سازی آرایه برای فرزندان
+                    bom_tree.append(item)
+                    lookup[item['part_id']] = item # ذخیره در lookup برای دسترسی سریع
+            
+            # مرحله دوم: تخصیص فرزندان به والدین
+            for item in flat_bom:
+                if item['parent_part_id']:
+                    parent_id = item['parent_part_id']
+                    # اگر والدش در لیست موجود بود، به لیست جایگزین‌های آن اضافه شود
+                    if parent_id in lookup:
+                        lookup[parent_id]['alternatives'].append(item)
 
+            # 4. دریافت هزینه‌های جانبی
             cursor.execute("SELECT * FROM project_costs WHERE project_id=%s", (id,))
             costs_list = cursor.fetchall()
-            
-            # اصلاحیه مهم: تبدیل مقادیر در لیست هزینه‌ها
             for item in costs_list:
                 for key, val in item.items():
                     if type(val).__name__ == 'Decimal': item[key] = float(val)
 
-            return jsonify({"project": project, "bom": bom_list, "costs": costs_list})
-        finally:
-            cursor.close(); conn.close()
+            return jsonify({"project": project, "bom": bom_tree, "costs": costs_list})
+        finally: cursor.close(); conn.close()
 
     # 5. ذخیره تغییرات BOM و هزینه‌ها (اصلاح شده برای ذخیره قیمت دلار و ضرایب)
     @app.route('/api/projects/save_details', methods=['POST'])
@@ -1208,34 +1223,48 @@ def register_routes(app, server_state):
             bom_items = d.get('bom', [])
             cost_items = d.get('costs', [])
             
-            # دریافت مقادیر جدید برای آپدیت پروژه
+            # پارامترهای محاسباتی پروژه
             conv_rate = d.get('conversion_rate', 0)
             p_profit = d.get('part_profit', 0)
             total_usd = d.get('total_price_usd', 0)
             total_count = d.get('total_count', 0)
-
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            
+            conn = get_db_connection(); cursor = conn.cursor()
             try:
-                # بروزرسانی BOM
+                # 1. حذف BOM قبلی برای جایگزینی با نسخه جدید
                 cursor.execute("DELETE FROM project_bom WHERE project_id=%s", (p_id,))
+                
                 if bom_items:
                     bom_values = []
+                    # پیمایش لیست درختی برای استخراج ردیف‌های دیتابیس
                     for idx, item in enumerate(bom_items):
-                        bom_values.append((p_id, item['part_id'], item['required_qty'], idx))
-                    cursor.executemany("INSERT INTO project_bom (project_id, part_id, quantity, sort_order) VALUES (%s, %s, %s, %s)", bom_values)
+                        # الف) ذخیره ردیف اصلی (والد) -> parent_part_id = NULL
+                        bom_values.append((p_id, item['part_id'], item['required_qty'], idx, None))
+                        
+                        # ب) ذخیره زیرمجموعه‌ها (فرزندان) -> parent_part_id = ID والد
+                        if 'alternatives' in item:
+                            for alt in item['alternatives']:
+                                # فرزندان، تعداد مورد نیاز (required_qty) و ترتیب (idx) را از والد به ارث می‌برند
+                                # یا می‌توانند مستقل باشند، اما در اینجا منطق BOM این است که جایگزین همان تعداد را دارد.
+                                bom_values.append((p_id, alt['part_id'], item['required_qty'], idx, item['part_id']))
+                                
+                    # درج یکجا (Bulk Insert) برای کارایی بالاتر
+                    cursor.executemany("""
+                        INSERT INTO project_bom (project_id, part_id, quantity, sort_order, parent_part_id) 
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, bom_values)
 
-                # بروزرسانی هزینه‌ها
+                # 2. به‌روزرسانی هزینه‌های جانبی
                 cursor.execute("DELETE FROM project_costs WHERE project_id=%s", (p_id,))
                 if cost_items:
                     cost_values = [(p_id, c['description'], float(c['cost'])) for c in cost_items if c.get('description')]
-                    if cost_values:
+                    if cost_values: 
                         cursor.executemany("INSERT INTO project_costs (project_id, description, cost) VALUES (%s, %s, %s)", cost_values)
 
-                # [مهم] آپدیت اطلاعات مالی پروژه در جدول اصلی
+                # 3. به‌روزرسانی اطلاعات کلی پروژه (نرخ‌ها و قیمت نهایی)
                 update_sql = """
-                    UPDATE projects 
-                    SET last_modified=NOW(), 
+                    UPDATE projects SET 
+                        last_modified=NOW(), 
                         conversion_rate=%s, 
                         part_profit=%s, 
                         total_price_usd=%s, 
@@ -1243,11 +1272,9 @@ def register_routes(app, server_state):
                     WHERE id=%s
                 """
                 cursor.execute(update_sql, (conv_rate, p_profit, total_usd, total_count, p_id))
-                
                 conn.commit()
                 return jsonify({"success": True})
-            finally:
-                cursor.close(); conn.close()
+            finally: cursor.close(); conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # 6. کسر از انبار (لاجیک هوشمند کسری و برداشت اجباری)
@@ -1256,41 +1283,72 @@ def register_routes(app, server_state):
         try:
             d = request.json
             p_id = d.get('project_id')
-            count = int(d.get('count', 1))
-            force = d.get('force', False)
+            count = int(d.get('count', 1)) # تعداد سری تولید
+            force = d.get('force', False)  # آیا در صورت کسری هم برداشت انجام شود؟
             user = d.get('username', 'System')
-            p_date = get_current_jalali_date()
-            conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
+            
+            conn = get_db_connection(); cursor = conn.cursor(dictionary=True)
             try:
-                # بررسی وجود پروژه
+                # دریافت نام پروژه برای ثبت در لاگ
                 cursor.execute("SELECT name FROM projects WHERE id=%s", (p_id,))
                 p_row = cursor.fetchone()
                 project_name = p_row.get('name', 'Unknown') if p_row else 'Unknown'
-
-                cursor.execute("SELECT pb.quantity as bom_qty, p.* FROM project_bom pb JOIN parts p ON pb.part_id = p.id WHERE pb.project_id=%s", (p_id,))
+                
+                # دریافت لیست قطعات BOM (فقط قطعات اصلی/والد باید کسر شوند)
+                # نکته: فرض بر این است که در BOM نهایی، کاربر قطعه اصلی را انتخاب کرده است.
+                # اگر قرار باشد قطعه جایگزین کسر شود، باید لاجیک انتخاب (Selection) سمت سرور هم ذخیره شود.
+                # فعلاً برای سادگی و طبق منطق فعلی دیتابیس، تمام ردیف‌هایی که parent_part_id ندارند (اصلی‌ها) بررسی می‌شوند.
+                cursor.execute("""
+                    SELECT pb.quantity as bom_qty, p.* FROM project_bom pb 
+                    JOIN parts p ON pb.part_id = p.id 
+                    WHERE pb.project_id=%s AND pb.parent_part_id IS NULL
+                """, (p_id,))
                 items = cursor.fetchall()
+                
+                # 1. بررسی کسری موجودی
                 shortages = []
                 for it in items:
                     req = it['bom_qty'] * count
-                    if it['quantity'] < req:
-                        shortages.append({"val": it['val'], "part_code": it['part_code'], "required": req, "in_stock": it['quantity'], "missing": req - it['quantity'], "location": it['storage_location']})
+                    if it['quantity'] < req: 
+                        shortages.append({
+                            "val": it['val'], 
+                            "part_code": it['part_code'], 
+                            "required": req, 
+                            "in_stock": it['quantity'], 
+                            "missing": req - it['quantity'], 
+                            "location": it['storage_location']
+                        })
                 
-                if shortages and not force: return jsonify({"success": False, "status": "shortage", "shortages": shortages})
+                # اگر کسری وجود داشت و حالت Force نبود، خطا برگردان
+                if shortages and not force: 
+                    return jsonify({"success": False, "status": "shortage", "shortages": shortages})
                 
+                # 2. انجام عملیات کسر
                 for it in items:
                     req = it['bom_qty'] * count
+                    # اگر فورس باشد، تا حد امکان (موجودی فعلی) کسر کن
                     deduct = it['quantity'] if (force and it['quantity'] < req) else req
+                    
                     if deduct > 0:
+                        # آپدیت موجودی
                         cursor.execute("UPDATE parts SET quantity = quantity - %s WHERE id = %s", (deduct, it['id']))
-                        # تبدیل قیمت به float برای ثبت در لاگ
+                        
+                        # ثبت لاگ تراکنش
                         price = float(it['toman_price']) if it['toman_price'] else 0
-                        log_sql = """INSERT INTO purchase_log (part_id, val, quantity_added, unit_price, operation_type, username, reason, timestamp) VALUES (%s, %s, %s, %s, 'EXIT (Project)', %s, %s, NOW())"""
-                        cursor.execute(log_sql, (it['id'], it['val'], -deduct, price, user, f"پروژه: {project_name}"))
+                        log_sql = """
+                            INSERT INTO purchase_log 
+                            (part_id, val, quantity_added, unit_price, operation_type, username, reason, timestamp, part_code, storage_location) 
+                            VALUES (%s, %s, %s, %s, 'EXIT (Project)', %s, %s, NOW(), %s, %s)
+                        """
+                        cursor.execute(log_sql, (
+                            it['id'], it['val'], -deduct, price, user, 
+                            f"پروژه: {project_name} (تعداد تولید: {count})", 
+                            it['part_code'], it['storage_location']
+                        ))
+                        
                 conn.commit()
                 return jsonify({"success": True})
-            finally:
-                cursor.close(); conn.close()
+            finally: cursor.close(); conn.close()
         except Exception as e: return jsonify({"error": str(e)}), 500
 
     # --------------------------------------------------------------------------

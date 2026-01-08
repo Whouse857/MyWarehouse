@@ -74,7 +74,7 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # ۱. ایجاد جدول کاربران
+        # 1. Users
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
             username VARCHAR(255) UNIQUE NOT NULL,
@@ -85,7 +85,7 @@ def init_db():
             permissions TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
-        # ۲. ایجاد جدول قطعات انبار (اطلاعات فنی و موجودی)
+        # 2. Parts
         cursor.execute('''CREATE TABLE IF NOT EXISTS parts (
             id INT AUTO_INCREMENT PRIMARY KEY,
             val TEXT, watt TEXT, tolerance TEXT, package TEXT, type TEXT,
@@ -97,7 +97,7 @@ def init_db():
             list5 TEXT, list6 TEXT, list7 TEXT, list8 TEXT, list9 TEXT, list10 TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
-        # ۳. ایجاد جدول تاریخچه تراکنش‌ها (لاگ ورود و خروج)
+        # 3. Logs
         cursor.execute('''CREATE TABLE IF NOT EXISTS purchase_log (
             log_id INT AUTO_INCREMENT PRIMARY KEY,
             part_id INT, val TEXT, quantity_added INT, unit_price DOUBLE,
@@ -109,7 +109,7 @@ def init_db():
             list5 TEXT, list6 TEXT, list7 TEXT, list8 TEXT, list9 TEXT, list10 TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
-        # ۴. ایجاد جدول مخاطبین (تامین‌کنندگان و مشتریان)
+        # 4. Contacts
         cursor.execute('''CREATE TABLE IF NOT EXISTS contacts (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL, phone VARCHAR(50), mobile VARCHAR(50),
@@ -117,26 +117,20 @@ def init_db():
             address TEXT, notes TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
-        # ۵. ایجاد جدول تنظیمات سیستمی (ذخیره کانفیگ‌ها بصورت JSON)
+        # 5. Config
         cursor.execute('''CREATE TABLE IF NOT EXISTS app_config (
             `key` VARCHAR(255) PRIMARY KEY,
             `value` LONGTEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
-        # ۶. ایجاد جدول مدیریت نسخه‌های دیتابیس (Migration Tracking)
+        # 6. Migrations
         cursor.execute('''CREATE TABLE IF NOT EXISTS migrations (
             id INT AUTO_INCREMENT PRIMARY KEY,
             version VARCHAR(100) UNIQUE,
             applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
-
-        # ----------------------------------------------------------------------
-        # [تگ: جداول ماژول مدیریت پروژه‌ها و BOM]
-        # این بخش اضافه شده تا قابلیت‌های تعریف پروژه و لیست قطعات فعال شود.
-        # از IF NOT EXISTS استفاده شده تا در اجراهای بعدی خطایی رخ ندهد.
-        # ----------------------------------------------------------------------
         
-        # ۷. ایجاد جدول اصلی پروژه‌ها
+        # 7. Projects
         cursor.execute('''CREATE TABLE IF NOT EXISTS projects (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
@@ -149,19 +143,20 @@ def init_db():
             total_parts_count INT DEFAULT 0
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
-        # ۸. ایجاد جدول لیست قطعات پروژه (BOM)
-        # کلید خارجی دارد تا با حذف پروژه، لیست قطعات آن نیز حذف شود (CASCADE)
+        # 8. Project BOM (اصلاح شده: اضافه شدن parent_part_id)
+        # این ستون برای ذخیره رابطه والد/فرزند (جایگزین‌ها) ضروری است
         cursor.execute('''CREATE TABLE IF NOT EXISTS project_bom (
             id INT AUTO_INCREMENT PRIMARY KEY,
             project_id INT,
             part_id INT,
             quantity INT DEFAULT 1,
             sort_order INT DEFAULT 0,
+            parent_part_id INT DEFAULT NULL,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
             FOREIGN KEY (part_id) REFERENCES parts(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
 
-        # ۹. ایجاد جدول هزینه‌های جانبی پروژه
+        # 9. Project Costs
         cursor.execute('''CREATE TABLE IF NOT EXISTS project_costs (
             id INT AUTO_INCREMENT PRIMARY KEY,
             project_id INT,
@@ -170,21 +165,20 @@ def init_db():
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''')
         
-        # ----------------------------------------------------------------------
-
-        # --- بخش مهاجرت داده‌ها (مدیریت تغییرات در نسخه‌های جدید) ---
+        # --- Migrations ---
         extra_fields = ['list5', 'list6', 'list7', 'list8', 'list9', 'list10']
         for field in extra_fields:
             add_column_safe(conn, "parts", field, "TEXT")
             add_column_safe(conn, "purchase_log", field, "TEXT")
         
-        # اضافه کردن ستون edit_reason به لاگ اگر وجود ندارد
         add_column_safe(conn, "purchase_log", "edit_reason", "TEXT")
+        
+        # [مهم] اضافه کردن ستون parent_part_id به جدول BOM در صورت وجود نداشتن (برای دیتابیس‌های قدیمی)
+        add_column_safe(conn, "project_bom", "parent_part_id", "INT DEFAULT NULL")
 
-        # بررسی و ایجاد کاربر ادمین پیش‌فرض (در صورت عدم وجود)
+        # Admin User
         cursor.execute("SELECT * FROM users WHERE username = 'admin'")
         if not cursor.fetchone():
-            # دسترسی‌های کامل برای ادمین (پروژه‌ها نیز اضافه شد)
             admin_perms = json.dumps({
                 "entry": True, "withdraw": True, "inventory": True, "users": True, 
                 "management": True, "backup": True, "contacts": True, "log": True, 
@@ -195,7 +189,7 @@ def init_db():
                 ('admin', hash_password('admin'), 'admin', 'مدیر سیستم', admin_perms)
             )
 
-        # درج تنظیمات قطعات پیش‌فرض (اگر قبلاً تنظیم نشده باشد)
+        # Default Config
         cursor.execute("SELECT `key` FROM app_config WHERE `key` = 'component_config'")
         if not cursor.fetchone():
             cursor.execute(
@@ -203,11 +197,8 @@ def init_db():
                 ('component_config', json.dumps(DEFAULT_COMPONENT_CONFIG))
             )
         
-        # ایجاد ایندکس یکتا برای کدهای انبار جهت جلوگیری از تکرار و افزایش سرعت جستجو
-        try:
-            cursor.execute("CREATE UNIQUE INDEX idx_parts_part_code_unique ON parts (part_code)")
-        except:
-            pass
+        try: cursor.execute("CREATE UNIQUE INDEX idx_parts_part_code_unique ON parts (part_code)")
+        except: pass
 
         conn.commit()
         cursor.close()
@@ -215,5 +206,4 @@ def init_db():
     except Exception as e:
         print(f"[INIT DB ERROR] {e}")
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()

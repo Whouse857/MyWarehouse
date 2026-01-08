@@ -2,12 +2,12 @@
  * ====================================================================================================
  * فایل: project-bom-logic.js
  * وظیفه: مدیریت منطق صفحه جزئیات پروژه (BOM)، محاسبات و کسر از انبار
- * توضیحات: جایگزینی window.confirm با سیستم مودال سفارشی مشابه Entry Page
+ * توضیحات: اضافه شدن چک isMounted برای جلوگیری از آپدیت استیت روی کامپوننت بسته شده
  * ====================================================================================================
  */
 
 window.useProjectBomLogic = (initialProject, initialRate) => {
-    const { useState, useEffect, useMemo, useCallback } = React;
+    const { useState, useEffect, useMemo, useCallback, useRef } = React;
     const fetchAPI = window.fetchAPI;
     const notify = window.useNotify ? window.useNotify() : { show: (t, m) => console.log(t, m) };
     const toShamsi = window.toShamsi;
@@ -28,10 +28,10 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
     // وضعیت برای افزودن جایگزین (آیدی والد هدف)
     const [targetParentIdForAlt, setTargetParentIdForAlt] = useState(null);
     
-    // وضعیت برای انیمیشن سواپ
+    // وضعیت برای انیمیشن سواپ (آیدی قطعه‌ای که تازه جابجا شده)
     const [lastSwappedId, setLastSwappedId] = useState(null);
 
-    // [جدید] وضعیت مودال حذف سفارشی (مشابه Entry Page)
+    // [جدید] وضعیت مودال حذف سفارشی
     const [deleteModal, setDeleteModal] = useState({ 
         isOpen: false, 
         id: null, 
@@ -40,19 +40,30 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         message: "" 
     });
 
+    // رفرنس برای چک کردن وضعیت Mount کامپوننت
+    const isMounted = useRef(true);
+
     // پارامترهای محاسباتی
     const [productionCount, setProductionCount] = useState(1);
     const [conversionRate, setConversionRate] = useState(0);
     const [partProfit, setPartProfit] = useState(0);
     
+    // نرخ دلار
     const [calculationRate, setCalculationRate] = useState(initialRate || 60000);
 
+    // مدیریت چرخه حیات برای isMounted
+    useEffect(() => {
+        isMounted.current = true;
+        return () => { isMounted.current = false; };
+    }, []);
+
     // --- API Calls ---
+
     const loadBOMDetails = useCallback(async () => {
         if (!activeProject?.id) return;
         try {
             const result = await fetchAPI(`/projects/${activeProject.id}/details`);
-            if (result.ok && result.data) {
+            if (isMounted.current && result.ok && result.data) {
                 const { data } = result;
                 const processedBOM = (data.bom || []).map(item => ({
                     ...item,
@@ -64,16 +75,18 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                 setExtraCosts(data.costs || []);
                 setConversionRate(data.project.conversion_rate || 0);
                 setPartProfit(data.project.part_profit || 0);
-            } else {
+            } else if (isMounted.current) {
                 notify.show('خطا در بارگذاری', 'پاسخ سرور نامعتبر بود.', 'error');
             }
-        } catch (e) { notify.show('خطای بحرانی', 'خطا در خواندن جزئیات BOM از دیتابیس', 'error'); }
+        } catch (e) { 
+            if (isMounted.current) notify.show('خطای بحرانی', 'خطا در خواندن جزئیات BOM از دیتابیس', 'error'); 
+        }
     }, [activeProject?.id, fetchAPI]);
 
     const loadInventory = useCallback(async () => {
         try {
             const { ok, data } = await fetchAPI('/parts');
-            if (ok) setInventory(data || []);
+            if (isMounted.current && ok) setInventory(data || []);
         } catch (e) { console.error("Inventory Load Error"); }
     }, [fetchAPI]);
 
@@ -86,9 +99,12 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         if (initialRate) setCalculationRate(initialRate);
     }, [initialRate]);
 
+    // پاک کردن وضعیت انیمیشن بعد از اجرا
     useEffect(() => {
         if (lastSwappedId) {
-            const timer = setTimeout(() => setLastSwappedId(null), 2000);
+            const timer = setTimeout(() => {
+                if (isMounted.current) setLastSwappedId(null);
+            }, 2000);
             return () => clearTimeout(timer);
         }
     }, [lastSwappedId]);
@@ -96,6 +112,7 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
     // --- Drag & Drop Logic ---
     const onDragStart = (e, index) => { setDraggedIndex(index); e.dataTransfer.effectAllowed = "move"; };
     const onDragOver = (e) => { e.preventDefault(); };
+    
     const onDrop = (e, index) => {
         e.preventDefault();
         if (draggedIndex === null || draggedIndex === index) return;
@@ -106,7 +123,10 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         setBomItems(newItems);
         setDraggedIndex(null);
     };
-    const onDragEnd = () => { setDraggedIndex(null); };
+
+    const onDragEnd = () => {
+        setDraggedIndex(null);
+    };
 
     // --- BOM Item Management ---
     const addPartToBOM = (part) => {
@@ -115,10 +135,12 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
             if (parentIndex !== -1) {
                 const newItems = [...bomItems];
                 const parent = newItems[parentIndex];
+                
                 if (parent.alternatives.find(a => a.part_id === part.id) || parent.part_id === part.id) {
                     notify.show('تکراری', 'این قطعه قبلاً در این گروه وجود دارد', 'warning');
                     return;
                 }
+
                 parent.alternatives.push({
                     part_id: part.id, val: part.val, part_code: part.part_code,
                     unit: part.unit || 'عدد', package: part.package, watt: part.watt,
@@ -136,8 +158,10 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                 return;
             }
         }
+
         const exists = bomItems.find(item => item.part_id === part.id);
         if (exists) return notify.show('تکراری', 'این قطعه قبلا در لیست موجود است', 'info');
+        
         setBomItems([...bomItems, {
             part_id: part.id, val: part.val, part_code: part.part_code,
             unit: part.unit || 'عدد', package: part.package, watt: part.watt,
@@ -160,9 +184,9 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         }));
     };
 
-    // [تغییر جدید]: درخواست حذف (باز کردن مودال)
+    // درخواست حذف (باز کردن مودال)
     const requestDelete = (partId, parentId = null) => {
-        const title = "حذف قطعه";
+        const title = parentId ? "حذف جایگزین" : "حذف قطعه اصلی";
         const message = parentId 
             ? "آیا از حذف این قطعه جایگزین اطمینان دارید؟" 
             : "آیا از حذف این قطعه و تمام زیرمجموعه‌های آن از لیست BOM اطمینان دارید؟";
@@ -176,7 +200,7 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         });
     };
 
-    // [تغییر جدید]: تایید نهایی حذف (اجرای عملیات)
+    // تایید نهایی حذف (اجرای عملیات)
     const confirmDelete = () => {
         const { id, parentId } = deleteModal;
         if (!id) return;
@@ -199,12 +223,12 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         setDeleteModal({ isOpen: false, id: null, parentId: null, title: "", message: "" });
     };
 
-    // [تغییر جدید]: انصراف از حذف
+    // انصراف از حذف
     const cancelDelete = () => {
         setDeleteModal({ isOpen: false, id: null, parentId: null, title: "", message: "" });
     };
 
-    // نگه داشتن تابع قبلی برای سازگاری (هرچند استفاده نمی‌شود)
+    // نگه داشتن تابع قبلی برای سازگاری
     const removeBOMItem = (partId, parentId = null) => {
         requestDelete(partId, parentId);
     };
@@ -216,7 +240,9 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
     const toggleSelection = (parentId, childId = null) => {
         const newItems = [...bomItems];
         const parentIndex = newItems.findIndex(i => i.part_id === parentId);
+        
         if (parentIndex === -1) return;
+
         const parent = newItems[parentIndex];
 
         if (childId === null) {
@@ -230,6 +256,7 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
 
         const childIndex = parent.alternatives.findIndex(a => a.part_id === childId);
         if (childIndex === -1) return;
+
         const child = parent.alternatives[childIndex];
 
         const newParent = {
@@ -239,9 +266,15 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
             isExpanded: true,
             alternatives: [
                 ...parent.alternatives.filter(a => a.part_id !== childId),
-                { ...parent, isSelected: false, alternatives: [], isExpanded: false }
+                {
+                    ...parent,
+                    isSelected: false,
+                    alternatives: [],
+                    isExpanded: false
+                }
             ]
         };
+
         newItems[parentIndex] = newParent;
         setBomItems(newItems);
         setLastSwappedId(child.part_id);
@@ -256,21 +289,25 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         bomItems.forEach(item => {
             let activeItem = item.isSelected ? item : item.alternatives.find(a => a.isSelected);
             if (!activeItem) activeItem = item;
+
             const price = parseFloat(activeItem.toman_price || 0) / parseFloat(activeItem.usd_rate || 1);
             const qty = parseFloat(item.required_qty || 0);
+
             bomUnitUSD += (price * qty);
             totalPartsCount += (qty * productionCount);
         });
 
         const extraUnitUSD = extraCosts.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
         const totalUnitUSD = bomUnitUSD + extraUnitUSD;
+        
         const unitBaseToman = totalUnitUSD * rateToUse;
         const afterConversion = unitBaseToman * (1 + (parseFloat(conversionRate)||0)/100);
         const finalUnitToman = afterConversion * (1 + (parseFloat(partProfit)||0)/100);
         const totalProfitToman = (finalUnitToman - afterConversion) * productionCount;
 
         return {
-            usdUnit: bomUnitUSD, usdBatch: bomUnitUSD * productionCount,
+            usdUnit: bomUnitUSD, 
+            usdBatch: bomUnitUSD * productionCount,
             totalProductionUSD: totalUnitUSD * productionCount,
             totalProductionToman: finalUnitToman * productionCount,
             unitFinalToman: finalUnitToman,
@@ -283,11 +320,16 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
 
     const handlePrintBOM = () => {
         const printWindow = window.open('', '_blank');
+        
         const activeList = [];
         bomItems.forEach(item => {
             const active = item.isSelected ? item : item.alternatives.find(a => a.isSelected);
-            if (active) activeList.push({ ...active, required_qty: item.required_qty });
+            if (active) {
+                const finalItem = { ...active, required_qty: item.required_qty }; 
+                activeList.push(finalItem);
+            }
         });
+
         const purchaseList = activeList.filter(item => (item.inventory_qty || 0) < (item.required_qty * productionCount));
         
         const htmlContent = `
@@ -305,8 +347,11 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                     th, td { border: 1px solid #000; padding: 6px; text-align: center; }
                     th { background-color: #ddd; }
+                    .specs { font-size: 9px; color: #333; display: block; margin-top: 2px; }
+                    .footer { margin-top: 30px; display: flex; justify-content: flex-start; }
                     .totals-box { width: 400px; background: #f9f9f9; padding: 15px; border: 2px solid #000; }
                     .totals-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+                    .check-box { width: 16px; height: 16px; border: 1px solid #000; display: inline-block; }
                     .purchase-title { color: #d32f2f; border-right: 5px solid #d32f2f; padding-right: 10px; margin-top: 30px; font-size: 16px; font-weight: bold; }
                     .note { font-size: 10px; color: #666; margin-top: 5px; font-style: italic; }
                 </style>
@@ -314,16 +359,18 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
             <body>
                 <div class="header">
                     <div class="logo-box">
-                        <img src="/static/logo.png" alt="Company Logo" onerror="this.style.display='none';" />
+                        <img src="/static/logo.png" alt="Company Logo" onerror="this.style.display='none'; console.log('Logo not found at /static/logo.png');" />
                     </div>
                     <h1>لیست قطعات پروژه (BOM)</h1>
                     <div style="font-weight: bold;">سیستم مدیریت هوشمند انبار H&Y</div>
                 </div>
+                
                 <div class="project-info">
                     <span>پروژه: ${activeProject?.name}</span>
                     <span>تاریخ: ${toShamsi ? toShamsi(new Date().toISOString()) : new Date().toLocaleDateString('fa-IR')}</span>
                     <span>تعداد واحد تولید: ${productionCount} واحد</span>
                 </div>
+
                 <table>
                     <thead>
                         <tr>
@@ -343,10 +390,13 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                             const specs = [item.package, item.watt, item.tolerance, item.tech].filter(Boolean).join(' | ');
                             return `
                                 <tr>
-                                    <td><div class="check-box" style="width: 16px; height: 16px; border: 1px solid #000; display: inline-block;"></div></td>
+                                    <td><div class="check-box"></div></td>
                                     <td>${idx + 1}</td>
                                     <td style="font-family: monospace;">${item.part_code}</td>
-                                    <td style="text-align: right;"><strong>${item.val}</strong> <span class="specs" style="font-size: 9px; color: #333; display: block; margin-top: 2px;">${specs}</span></td>
+                                    <td style="text-align: right;">
+                                        <strong>${item.val}</strong>
+                                        <span class="specs">${specs}</span>
+                                    </td>
                                     <td>${item.unit || 'عدد'}</td>
                                     <td>${item.required_qty}</td>
                                     <td style="font-weight: bold;">${totalNeeded}</td>
@@ -356,20 +406,36 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                         }).join('')}
                     </tbody>
                 </table>
-                <div class="note">* این لیست فقط شامل قطعات انتخاب شده (تیک خورده) در BOM است.</div>
+                <div class="note">* این لیست فقط شامل قطعات انتخاب شده (تیک خورده) در BOM است. گزینه‌های جایگزین چاپ نشده‌اند.</div>
+
                 ${purchaseList.length > 0 ? `
                     <div class="purchase-title">لیست خرید قطعات کسری (نیاز به تامین)</div>
                     <table>
                         <thead>
-                            <tr><th style="width: 30px;">ردیف</th><th>نام قطعه و پکیج</th><th>کد انبار</th><th>موجودی فعلی</th><th>نیاز کل</th><th style="color: #d32f2f;">کسری خرید</th></tr>
+                            <tr>
+                                <th style="width: 30px;">ردیف</th>
+                                <th>نام قطعه و پکیج</th>
+                                <th>کد انبار</th>
+                                <th>موجودی فعلی</th>
+                                <th>نیاز کل</th>
+                                <th style="color: #d32f2f;">کسری خرید</th>
+                            </tr>
                         </thead>
                         <tbody>
                             ${purchaseList.map((item, idx) => `
-                                <tr><td>${idx + 1}</td><td style="text-align: right;"><strong>${item.val}</strong> (${item.package})</td><td>${item.part_code}</td><td>${item.inventory_qty || 0}</td><td>${item.required_qty * productionCount}</td><td style="font-weight: bold; color: #d32f2f;">${(item.required_qty * productionCount) - (item.inventory_qty || 0)}</td></tr>
+                                <tr>
+                                    <td>${idx + 1}</td>
+                                    <td style="text-align: right;"><strong>${item.val}</strong> (${item.package})</td>
+                                    <td>${item.part_code}</td>
+                                    <td>${item.inventory_qty || 0}</td>
+                                    <td>${item.required_qty * productionCount}</td>
+                                    <td style="font-weight: bold; color: #d32f2f;">${(item.required_qty * productionCount) - (item.inventory_qty || 0)}</td>
+                                </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 ` : ''}
+
                 <div class="footer">
                     <div class="totals-box">
                         <div class="totals-row"><span>تنوع قطعات:</span> <span>${totals.variety} ردیف</span></div>
@@ -395,24 +461,34 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                 const qty = parseFloat(item.required_qty || 0);
                 return sum + ((price / rate) * qty);
             }, 0);
+            
             const extraTotalUSD = extraCosts.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
-            const totalBatchUSD = (bomTotalUSD + extraTotalUSD) * productionCount;
+            const unitTotalUSD = bomTotalUSD + extraTotalUSD;
+            const totalBatchUSD = unitTotalUSD * productionCount;
             const totalCount = bomItems.reduce((sum, item) => sum + (parseFloat(item.required_qty) || 0), 0) * productionCount;
 
             const { ok, data } = await fetchAPI('/projects/save_details', {
                 method: 'POST',
                 body: {
-                    project_id: activeProject.id, bom: bomItems, costs: extraCosts,
+                    project_id: activeProject.id, 
+                    bom: bomItems, 
+                    costs: extraCosts,
                     conversion_rate: conversionRate, part_profit: partProfit,
                     total_price_usd: totalBatchUSD || 0, total_count: totalCount || 0
                 }
             });
+
             if (ok) { 
                 notify.show('موفقیت', 'پروژه با موفقیت ذخیره شد.', 'success'); 
                 return true; 
-            } else { notify.show('خطا', (data && data.error) || 'خطا در سرور', 'error'); }
-        } catch (e) { notify.show('خطا', 'مشکل ارتباطی', 'error'); } 
-        finally { setIsSaving(false); }
+            } else {
+                notify.show('خطا', (data && data.error) || 'سرور خطا داد اما پیامی نفرستاد.', 'error');
+            }
+        } catch (e) { notify.show('خطا', 'مشکل در ارتباط با سرور (کنسول را چک کنید)', 'error'); } 
+        finally { 
+            // اصلاح: فقط اگر کامپوننت هنوز باز است، state تغییر کند
+            if (isMounted.current) setIsSaving(false); 
+        }
         return false;
     };
 
@@ -424,13 +500,17 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                 body: { project_id: activeProject.id, count: productionCount, force, username: user?.username || 'Admin' }
             });
             if (ok && data.success) {
-                notify.show('موفقیت', `موجودی کسر شد.`, 'success');
+                notify.show('موفقیت', `موجودی انبار برای تولید ${productionCount} واحد کسر شد.`, 'success');
                 setShortageData(null); loadInventory(); loadBOMDetails();
             } else if (data?.status === 'shortage') {
                 setShortageData(data.shortages);
-            } else { notify.show('خطا', data.error || 'خطا در عملیات', 'error'); }
-        } catch (e) { notify.show('خطا', 'مشکل سرور', 'error'); }
-        finally { setIsDeducting(false); }
+            } else {
+                notify.show('خطا', (data && data.error) || 'خطا در انجام عملیات برداشت', 'error');
+            }
+        } catch (e) { notify.show('خطا', 'مشکل در ارتباط با سرور هنگام کسر موجودی', 'error'); }
+        finally { 
+            if (isMounted.current) setIsDeducting(false); 
+        }
     };
 
     const filteredInventory = inventory.filter(p => p.val.toLowerCase().includes(searchInventory.toLowerCase()) || p.part_code.toLowerCase().includes(searchInventory.toLowerCase())).slice(0, 10);
@@ -443,11 +523,11 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
         conversionRate, setConversionRate, partProfit, setPartProfit,
         draggedIndex, lastSwappedId, 
         
-        // اکسپورت‌های جدید برای مودال حذف
-        deleteModal, requestDelete, confirmDelete, cancelDelete,
-
         targetParentIdForAlt, setTargetParentIdForAlt,
         addPartToBOM, updateBOMQty, removeBOMItem,
+        // اکسپورت‌های مودال حذف
+        deleteModal, requestDelete, confirmDelete, cancelDelete,
+        
         toggleExpand, toggleSelection,
         setExtraCosts, saveBOMDetails, handleDeduct,
         handlePrintBOM, 

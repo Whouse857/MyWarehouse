@@ -2,7 +2,7 @@
  * ====================================================================================================
  * فایل: ProjectBOM.jsx
  * وظیفه: کامپوننت رابط کاربری ویرایشگر BOM
- * توضیحات: حذف دکمه‌های اسپینر از اینپوت تعداد
+ * توضیحات: رفع باگ removeChild در دکمه ذخیره + مودال حذف شیک
  * ====================================================================================================
  */
 
@@ -21,7 +21,7 @@ const SpecBadges = ({ item }) => (
 );
 
 // ----------------------------------------------------------------------------------------------------
-// [Sub-Component] مودال تایید حذف
+// [Sub-Component] مودال تایید حذف (مشابه Entry Page)
 // ----------------------------------------------------------------------------------------------------
 const DeleteConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
     if (!isOpen) return null;
@@ -86,7 +86,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
 
     useEffect(() => {
         if (window.lucide) setTimeout(() => window.lucide.createIcons(), 100);
-    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt, deleteModal]);
+    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt, deleteModal, isSaving]);
 
     useEffect(() => {
         if (targetParentIdForAlt && searchInputRef.current) {
@@ -132,7 +132,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
     return (
         <div className="flex-1 p-8 pb-20 overflow-y-auto custom-scroll text-right animate-in fade-in" dir="rtl">
             
-            {/* مودال حذف سفارشی */}
             <DeleteConfirmationModal 
                 isOpen={deleteModal.isOpen}
                 title={deleteModal.title}
@@ -162,19 +161,16 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                     {isSaving ? (
                         <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
                     ) : (
-                        <>
+                        // اصلاح: قرار دادن آیکون در span برای جلوگیری از خطای removeChild
+                        <span className="flex items-center gap-2">
                             <i data-lucide="save" className="w-5 h-5 text-nexus-accent"></i>
                             <span>ذخیره و بازگشت</span>
-                        </>
+                        </span>
                     )}
                 </button>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-                
-                {/* -----------------------------------------------------------------------------------
-                   [MAIN CONTENT] جدول قطعات
-                ------------------------------------------------------------------------------------ */}
                 <div className="xl:col-span-8 space-y-6">
                     <div className="glass-panel rounded-[2rem] border border-white/5 overflow-visible z-10 relative">
                         <div className="p-6 bg-white/5 border-b border-white/5 flex justify-between items-center">
@@ -303,7 +299,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                                         </div>
                                                     </td>
 
-                                                    {/* ستون تعداد واحد - اعمال کلاس no-spinner */}
                                                     {isParent && (
                                                         <td className="p-4 text-center">
                                                             <div className="flex items-center justify-center gap-2">
@@ -374,7 +369,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                         </div>
                     </div>
 
-                    {/* پنل هزینه‌های جانبی */}
                     <div className="glass-panel rounded-[2rem] border border-white/5 p-6 shadow-lg">
                         <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
                             <h3 className="font-bold text-white flex items-center gap-2">
@@ -414,9 +408,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                     </div>
                 </div>
 
-                {/* -----------------------------------------------------------------------------------
-                   [SIDEBAR] سایدبار (4 ستون)
-                ------------------------------------------------------------------------------------ */}
                 <div className="xl:col-span-4 space-y-6 sticky top-8">
                     <div className="glass-panel rounded-[2.5rem] p-8 border border-white/10 shadow-2xl relative overflow-hidden">
                         <div className="absolute -top-10 -right-10 w-40 h-40 bg-nexus-primary/10 blur-[50px] rounded-full"></div>
@@ -512,7 +503,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                         </div>
                     </div>
                     
-                    {/* دکمه کسر از انبار */}
                     <button 
                         onClick={()=>handleDeduct(false, user)} 
                         disabled={isDeducting} 
@@ -533,9 +523,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                 </div>
             </div>
 
-            {/* ---------------------------------------------------------------------------------------
-               [MODAL] مودال نمایش کسری موجودی
-            ---------------------------------------------------------------------------------------- */}
             {shortageData && (
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
                     <div className="glass-panel border border-rose-500/30 p-8 rounded-[3rem] max-w-2xl w-full text-right shadow-2xl shadow-rose-900/20 animate-in slide-in-from-bottom-10">
