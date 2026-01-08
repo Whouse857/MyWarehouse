@@ -2,11 +2,11 @@
  * ====================================================================================================
  * فایل: ProjectBOM.jsx
  * وظیفه: کامپوننت رابط کاربری ویرایشگر BOM
- * توضیحات: نسخه نهایی و اصلاح شده (بازگردانی قیمت تکی واحد + آمار کامل سایدبار + اعتبارسنجی ورودی‌ها)
+ * توضیحات: کد کامل کامپوننت
  * ====================================================================================================
  */
 
-const { useEffect } = React;
+const { useEffect, useRef } = React;
 
 // ----------------------------------------------------------------------------------------------------
 // [Sub-Component] بج‌های مشخصات فنی (وات، تلرانس و...)
@@ -30,19 +30,33 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
         filteredInventory, isSaving, isDeducting, shortageData, setShortageData,
         productionCount, setProductionCount, calculationRate, setCalculationRate,
         conversionRate, setConversionRate, partProfit, setPartProfit, draggedIndex,
+        lastSwappedId, // دریافت شناسه سواپ شده برای انیمیشن
         
-        addPartToBOM, updateBOMQty, removeBOMItem, setExtraCosts, saveBOMDetails, handleDeduct,
+        targetParentIdForAlt, setTargetParentIdForAlt,
+        addPartToBOM, updateBOMQty, removeBOMItem, 
+        toggleExpand, toggleSelection,
+        setExtraCosts, saveBOMDetails, handleDeduct,
         handlePrintBOM, 
-        onDragStart, onDragOver, onDrop, totals 
+        onDragStart, onDragOver, onDrop, onDragEnd, // توابع درگ و دراپ
+        totals 
     } = logic;
+
+    const searchInputRef = useRef(null);
 
     // بارگذاری مجدد آیکون‌ها
     useEffect(() => {
         if (window.lucide) setTimeout(() => window.lucide.createIcons(), 100);
-    }, [bomItems, shortageData, extraCosts]);
+    }, [bomItems, shortageData, extraCosts, targetParentIdForAlt]);
+
+    // فوکوس خودکار
+    useEffect(() => {
+        if (targetParentIdForAlt && searchInputRef.current) {
+            searchInputRef.current.focus();
+        }
+    }, [targetParentIdForAlt]);
 
     // ------------------------------------------------------------------------------------------------
-    // [UI] ویجت نرخ دلار (با دکمه‌های میانبر)
+    // [UI] ویجت نرخ دلار
     // ------------------------------------------------------------------------------------------------
     const DollarWidget = () => (
         <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 mb-6 shadow-lg">
@@ -58,7 +72,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                 onChange={(e) => setCalculationRate(Math.max(0, parseInt(e.target.value) || 0))} 
             />
             
-            {/* دکمه‌های میانبر */}
             <div className="grid grid-cols-2 gap-2 mt-1">
                 <button 
                     onClick={() => serverRate?.price > 0 && setCalculationRate(serverRate.price)} 
@@ -95,7 +108,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                         <h2 className="text-2xl font-black text-white">{activeProject?.name}</h2>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs text-nexus-accent font-bold tracking-widest uppercase italic bg-nexus-primary/10 px-2 py-0.5 rounded">BOM Editor Mode</span>
-                            <span className="text-[10px] text-gray-500 font-mono">{bomItems.length} items</span>
+                            <span className="text-[10px] text-gray-500 font-mono">{bomItems.length} groups</span>
                         </div>
                     </div>
                 </div>
@@ -118,7 +131,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
                 
                 {/* -----------------------------------------------------------------------------------
-                   [MAIN CONTENT] جدول قطعات (8 ستون)
+                   [MAIN CONTENT] جدول قطعات
                 ------------------------------------------------------------------------------------ */}
                 <div className="xl:col-span-8 space-y-6">
                     <div className="glass-panel rounded-[2rem] border border-white/5 overflow-visible z-10 relative">
@@ -129,24 +142,37 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                             </h3>
                             
                             {/* باکس جستجو */}
-                            <div className="relative w-80 z-50">
+                            <div className="relative w-96 z-50">
                                 <i data-lucide="search" className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"></i>
                                 <input 
+                                    ref={searchInputRef}
                                     type="text" 
-                                    placeholder="افزودن قطعه (نام یا کد)..." 
-                                    className="w-full bg-black/40 border border-white/5 rounded-xl py-2 pr-9 pl-3 text-xs text-white outline-none focus:border-nexus-primary transition-colors"
+                                    placeholder={targetParentIdForAlt ? "در حال جستجوی جایگزین..." : "افزودن قطعه (نام یا کد)..."}
+                                    className={`w-full bg-black/40 border rounded-xl py-2 pr-9 pl-3 text-xs text-white outline-none transition-colors ${targetParentIdForAlt ? 'border-nexus-accent shadow-[0_0_10px_rgba(255,255,255,0.1)]' : 'border-white/5 focus:border-nexus-primary'}`}
                                     value={searchInventory} 
                                     onChange={(e) => setSearchInventory(e.target.value)} 
                                 />
+                                {targetParentIdForAlt && (
+                                    <button onClick={()=>setTargetParentIdForAlt(null)} className="absolute left-2 top-1/2 -translate-y-1/2 text-rose-400 hover:text-rose-300">
+                                        <i data-lucide="x-circle" className="w-4 h-4"></i>
+                                    </button>
+                                )}
                                 {searchInventory && (
                                     <div className="absolute top-full mt-2 left-0 right-0 glass-panel rounded-xl border border-white/10 shadow-2xl z-[100] p-2 overflow-hidden bg-[#1e293b] animate-in slide-in-from-top-2">
                                         {filteredInventory.length > 0 ? filteredInventory.map(p => (
-                                            <div key={p.id} onClick={() => addPartToBOM(p)} className="p-3 hover:bg-nexus-primary/20 rounded-lg cursor-pointer flex justify-between items-center border-b border-white/5 last:border-0 transition-colors group">
+                                            <div 
+                                                key={p.id} 
+                                                onClick={() => {
+                                                    addPartToBOM(p);
+                                                    if(searchInputRef.current) searchInputRef.current.focus();
+                                                }} 
+                                                className="p-3 hover:bg-nexus-primary/20 rounded-lg cursor-pointer flex justify-between items-center border-b border-white/5 last:border-0 transition-colors group"
+                                            >
                                                 <div className="flex flex-col">
                                                     <span className="text-xs font-bold text-white group-hover:text-nexus-accent transition-colors">{p.val}</span>
                                                     <span className="text-[9px] text-gray-500 font-mono">{p.part_code}</span>
                                                 </div>
-                                                <i data-lucide="plus" className="w-4 h-4 text-gray-500 group-hover:text-nexus-primary"></i>
+                                                <i data-lucide={targetParentIdForAlt ? "git-branch" : "plus"} className="w-4 h-4 text-gray-500 group-hover:text-nexus-primary"></i>
                                             </div>
                                         )) : (
                                             <div className="p-3 text-center text-xs text-gray-500">موردی یافت نشد</div>
@@ -161,71 +187,157 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                             <table className="w-full text-right border-collapse">
                                 <thead className="text-[10px] text-gray-500 uppercase bg-black/20 font-black sticky top-0">
                                     <tr>
-                                        <th className="p-4 w-10"></th>
+                                        {/* ادغام ستون‌های ابزار (جابجایی/درگ) */}
+                                        <th className="p-4 w-16 text-center">ابزار</th> 
                                         <th className="p-4 w-24">کد</th>
                                         <th className="p-4">نام قطعه</th>
-                                        <th className="p-4 w-16 text-center">واحد</th>
-                                        <th className="p-4 w-20 text-center">تعداد</th>
+                                        <th className="p-4 w-28 text-center">تعداد واحد</th>
+                                        <th className="p-4 w-20 text-center text-nexus-accent">تعداد کل</th>
                                         <th className="p-4 w-20 text-center">موجودی</th>
                                         <th className="p-4 w-24 text-center">قیمت واحد ($)</th>
                                         <th className="p-4 w-24 text-center">قیمت کل ($)</th>
                                         <th className="p-4 w-32 text-center font-black">قیمت کل (ت)</th>
-                                        <th className="p-4 w-16 text-center">حذف</th>
+                                        <th className="p-4 w-24 text-center">عملیات</th>
                                     </tr>
                                 </thead>
                                 <tbody className="text-sm divide-y divide-white/5">
                                     {bomItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan="10" className="p-10 text-center text-gray-500 italic">
+                                            <td colSpan="11" className="p-10 text-center text-gray-500 italic">
                                                 لیست قطعات خالی است. از باکس جستجو بالا قطعات را اضافه کنید.
                                             </td>
                                         </tr>
                                     ) : bomItems.map((item, idx) => {
-                                        const unitPriceUSD = parseFloat(item.toman_price||0) / parseFloat(item.usd_rate||1);
-                                        const rowTotalPriceUSD = unitPriceUSD * parseFloat(item.required_qty || 0);
-                                        const totalToman = rowTotalPriceUSD * calculationRate;
-                                        
-                                        const totalRequiredInBatch = item.required_qty * productionCount;
-                                        const isLowStock = (item.inventory_qty || 0) < totalRequiredInBatch;
-                                        
+                                        // رندر هر ردیف (والد) و فرزندانش
+                                        const renderRow = (part, isParent, parentId = null) => {
+                                            const unitPriceUSD = parseFloat(part.toman_price||0) / parseFloat(part.usd_rate||1);
+                                            const qty = isParent ? part.required_qty : item.required_qty; 
+                                            const rowTotalPriceUSD = unitPriceUSD * parseFloat(qty || 0);
+                                            const totalToman = rowTotalPriceUSD * calculationRate;
+                                            
+                                            // محاسبه تعداد کل
+                                            const totalRequiredInBatch = qty * productionCount;
+                                            
+                                            const isLowStock = (part.inventory_qty || 0) < totalRequiredInBatch;
+                                            const isSelected = part.isSelected;
+                                            const rowStatusClass = isSelected ? 'is-selected' : 'not-selected';
+                                            
+                                            // انیمیشن سواپ
+                                            const swapClass = (lastSwappedId === part.part_id) ? 'animate-swap' : '';
+
+                                            return (
+                                                <tr 
+                                                    key={part.part_id} 
+                                                    draggable={isParent}
+                                                    onDragStart={(e)=>isParent && onDragStart(e, idx)} 
+                                                    onDragOver={(e)=>isParent && onDragOver(e)} 
+                                                    onDrop={(e)=>isParent && onDrop(e, idx)}
+                                                    onDragEnd={isParent ? onDragEnd : undefined} // پایان درگ برای پاک کردن استایل
+                                                    className={`bom-item-row hover:bg-white/5 cursor-default group ${rowStatusClass} ${draggedIndex===idx ? 'dragging' : ''} ${swapClass}`}
+                                                >
+                                                    {/* ستون ابزار (ادغام شده) */}
+                                                    <td className="p-4 text-center">
+                                                        {isParent ? (
+                                                            // ابزارهای والد: درگ و بازشو
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <i data-lucide="grip-vertical" className="w-4 h-4 opacity-30 group-hover:opacity-100 transition-opacity cursor-move text-gray-500"></i>
+                                                                {part.alternatives && part.alternatives.length > 0 && (
+                                                                    <button onClick={(e) => { e.stopPropagation(); toggleExpand(part.part_id); }}>
+                                                                        <i data-lucide={part.isExpanded ? "chevron-down" : "chevron-left"} className="w-4 h-4 text-white hover:text-nexus-primary"></i>
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            // ابزار فرزند: دکمه جابجایی کادردار
+                                                            <button 
+                                                                onClick={() => toggleSelection(parentId, part.part_id)}
+                                                                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-nexus-primary/20 text-gray-500 hover:text-nexus-accent border border-white/10 hover:border-nexus-primary/50 transition-all flex items-center justify-center mx-auto"
+                                                                title="جایگزینی با قطعه اصلی"
+                                                            >
+                                                                <i data-lucide="arrow-up-down" className="w-4 h-4"></i>
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                    
+                                                    <td className="p-4 font-mono text-[11px] text-nexus-accent">
+                                                        {part.part_code}
+                                                        {!isParent && <span className="ml-2 text-[9px] bg-white/10 px-1 rounded text-gray-400">ALT</span>}
+                                                    </td>
+
+                                                    <td className="p-4" colSpan={isParent ? 1 : 3}>
+                                                        <div className={`font-bold text-white transition-colors ${!isParent ? 'pr-12 border-r-2 border-white/10' : ''}`}>
+                                                            {part.val}
+                                                        </div>
+                                                        <div className={!isParent ? 'pr-12' : ''}>
+                                                            <SpecBadges item={part} />
+                                                        </div>
+                                                    </td>
+
+                                                    {/* ستون تعداد واحد - واحد کنار عدد */}
+                                                    {isParent && (
+                                                        <td className="p-4 text-center">
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <input 
+                                                                    type="number"
+                                                                    min="1"
+                                                                    className="w-16 bg-black/40 border border-white/10 rounded-lg py-1 text-center text-white focus:border-nexus-primary outline-none transition-colors font-bold" 
+                                                                    value={part.required_qty} 
+                                                                    onChange={(e)=>updateBOMQty(part.part_id, e.target.value)} 
+                                                                />
+                                                                <span className="text-[10px] text-gray-500">{part.unit || 'عدد'}</span>
+                                                            </div>
+                                                        </td>
+                                                    )}
+
+                                                    {/* ستون تعداد کل - بدون کادر */}
+                                                    {isParent && (
+                                                        <td className="p-4 text-center">
+                                                            <span className="text-nexus-accent font-mono font-bold">
+                                                                {totalRequiredInBatch.toLocaleString()}
+                                                            </span>
+                                                        </td>
+                                                    )}
+
+                                                    <td className={`p-4 text-center font-bold ${isLowStock ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                                        {part.inventory_qty || 0}
+                                                        {isLowStock && <div className="text-[8px] bg-rose-500/10 px-1 rounded mt-1">کسری</div>}
+                                                    </td>
+                                                    <td className="p-4 text-center font-mono text-[10px] text-blue-300">{unitPriceUSD.toFixed(4)}</td>
+                                                    <td className="p-4 text-center font-mono text-[10px] text-blue-300">{rowTotalPriceUSD.toFixed(4)}</td>
+                                                    <td className={`p-4 text-center font-black tracking-tight ${isSelected ? 'text-emerald-400' : 'text-gray-600'}`}>
+                                                        {Math.round(totalToman).toLocaleString()}
+                                                    </td>
+                                                    <td className="p-4 text-center">
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            {isParent && (
+                                                                <button 
+                                                                    onClick={() => setTargetParentIdForAlt(part.part_id)} 
+                                                                    className="p-2 rounded-lg text-gray-500 hover:text-nexus-accent hover:bg-nexus-primary/10 transition-all"
+                                                                    title="افزودن جایگزین (Split)"
+                                                                >
+                                                                    <i data-lucide="git-branch" className="w-4 h-4"></i>
+                                                                </button>
+                                                            )}
+                                                            <button 
+                                                                onClick={()=>removeBOMItem(part.part_id, isParent ? null : parentId)} 
+                                                                className="p-2 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                                                                title="حذف"
+                                                            >
+                                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        };
+
                                         return (
-                                            <tr 
-                                                key={item.part_id} 
-                                                draggable 
-                                                onDragStart={(e)=>onDragStart(e, idx)} 
-                                                onDragOver={(e)=>onDragOver(e)} 
-                                                onDrop={(e)=>onDrop(e, idx)}
-                                                className={`bom-item-row hover:bg-white/5 cursor-move group ${draggedIndex===idx ? 'dragging' : ''}`}
-                                            >
-                                                <td className="p-4 text-gray-600"><i data-lucide="grip-vertical" className="w-4 h-4 opacity-30 group-hover:opacity-100 transition-opacity"></i></td>
-                                                <td className="p-4 font-mono text-[10px] text-nexus-accent">{item.part_code}</td>
-                                                <td className="p-4">
-                                                    <div className="font-bold text-white group-hover:text-nexus-primary transition-colors">{item.val}</div>
-                                                    <SpecBadges item={item} />
-                                                </td>
-                                                <td className="p-4 text-center text-xs text-gray-400">{item.unit || 'عدد'}</td>
-                                                <td className="p-4 text-center">
-                                                    <input 
-                                                        type="number"
-                                                        min="1"
-                                                        className="w-16 bg-black/40 border border-white/10 rounded-lg py-1 text-center text-white focus:border-nexus-primary outline-none transition-colors font-bold" 
-                                                        value={item.required_qty} 
-                                                        onChange={(e)=>updateBOMQty(item.part_id, Math.max(1, e.target.value))} 
-                                                    />
-                                                </td>
-                                                <td className={`p-4 text-center font-bold ${isLowStock ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                                    {item.inventory_qty || 0}
-                                                    {isLowStock && <div className="text-[8px] bg-rose-500/10 px-1 rounded mt-1">کسری</div>}
-                                                </td>
-                                                <td className="p-4 text-center font-mono text-[10px] text-blue-300">{unitPriceUSD.toFixed(4)}</td>
-                                                <td className="p-4 text-center font-mono text-[10px] text-blue-300">{rowTotalPriceUSD.toFixed(4)}</td>
-                                                <td className="p-4 text-center font-black text-emerald-400 tracking-tight">{Math.round(totalToman).toLocaleString()}</td>
-                                                <td className="p-4 text-center">
-                                                    <button onClick={()=>removeBOMItem(item.part_id)} className="p-2 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
-                                                        <i data-lucide="trash-2" className="w-4 h-4"></i>
-                                                    </button>
-                                                </td>
-                                            </tr>
+                                            <React.Fragment key={item.part_id}>
+                                                {renderRow(item, true)}
+                                                {item.isExpanded && item.alternatives && item.alternatives.map(alt => (
+                                                    renderRow(alt, false, item.part_id)
+                                                ))}
+                                            </React.Fragment>
                                         );
                                     })}
                                 </tbody>
@@ -274,21 +386,18 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                 </div>
 
                 {/* -----------------------------------------------------------------------------------
-                   [SIDEBAR] سایدبار (4 ستون)
+                   [SIDEBAR] سایدبار
                 ------------------------------------------------------------------------------------ */}
                 <div className="xl:col-span-4 space-y-6 sticky top-8">
                     <div className="glass-panel rounded-[2.5rem] p-8 border border-white/10 shadow-2xl relative overflow-hidden">
-                        {/* Glow Effect */}
                         <div className="absolute -top-10 -right-10 w-40 h-40 bg-nexus-primary/10 blur-[50px] rounded-full"></div>
                         
                         <DollarWidget />
                         
                         <div className="space-y-4 text-sm relative z-10">
-                            
-                            {/* [بخش 1 بازگردانی شده]: آمار خلاصه پروژه */}
                             <div className="bg-white/5 rounded-xl p-4 border border-white/5 space-y-2 mb-4">
                                 <div className="flex justify-between items-center text-xs text-gray-400">
-                                    <span>تنوع قطعات:</span>
+                                    <span>تنوع قطعات (گروه):</span>
                                     <span className="text-white font-bold">{totals.variety} قلم</span>
                                 </div>
                                 <div className="flex justify-between items-center text-xs text-gray-400">
@@ -305,7 +414,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                 </div>
                             </div>
                             
-                            {/* ورودی‌های محاسباتی */}
                             <div className="flex justify-between items-center text-gray-400 hover:text-white transition-colors">
                                 <span>تعداد واحد تولید:</span>
                                 <input 
@@ -337,7 +445,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                 />
                             </div>
                             
-                            {/* باکس نمایش سود */}
                             <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 space-y-2 mt-2 backdrop-blur-sm">
                                 <div className="flex justify-between items-center text-xs">
                                     <span className="text-gray-400">سود کل پارت (ارزی):</span>
@@ -349,9 +456,7 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                 </div>
                             </div>
 
-                            {/* [بخش 2 بازگردانی شده]: قیمت‌های نهایی (تکی و کل) */}
                             <div className="pt-6 border-t border-white/10 space-y-4 text-center">
-                                {/* قیمت هر واحد */}
                                 <div>
                                     <div className="text-[10px] text-gray-500 font-black uppercase mb-1 tracking-widest">قیمت نهایی تولید (هر واحد)</div>
                                     <div className="text-3xl font-black text-white leading-tight">
@@ -360,7 +465,6 @@ const ProjectBOM = ({ project, rate, serverRate, config, onBack, user }) => {
                                     </div>
                                 </div>
 
-                                {/* قیمت کل پارت */}
                                 <div>
                                     <div className="text-[10px] text-nexus-accent font-black uppercase tracking-widest mb-1">قیمت کل پارت تولیدی</div>
                                     <div className="text-4xl font-black text-white drop-shadow-lg tracking-tight bg-nexus-primary/10 p-3 rounded-2xl border border-nexus-primary/20 shadow-inner">

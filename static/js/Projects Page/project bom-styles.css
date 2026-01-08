@@ -1,7 +1,7 @@
 /* ====================================================================================================
    فایل: project-bom-styles.css
    وظیفه: استایل‌های اختصاصی برای صفحه ویرایشگر BOM، جداول، مدال‌ها و حالت پرینت
-   توضیحات: شامل استایل‌های درگ‌ان‌دراپ، بج‌های رنگی مشخصات و تنظیمات چاپ کاغذ
+   توضیحات: کد کامل استایل‌ها شامل فیکس درگ و انیمیشن‌ها
 ==================================================================================================== */
 
 /* -------------------------------------------------------------------------------------------------
@@ -9,14 +9,22 @@
 ------------------------------------------------------------------------------------------------- */
 .bom-item-row {
     transition: all 0.2s ease;
+    border-right: 3px solid transparent; /* رزرو فضا برای بوردر وضعیت */
+    /* اطمینان از اینکه افزودن بوردر باعث پرش نشود */
+    box-sizing: border-box; 
 }
 
 /* وقتی ردیفی در حال کشیده شدن است */
 .bom-item-row.dragging {
-    opacity: 0.5;
-    border: 2px dashed #6366f1; /* رنگ بنفش نکسوس */
-    background: rgba(99, 102, 241, 0.1);
-    transform: scale(0.98);
+    opacity: 0.6;
+    background: rgba(99, 102, 241, 0.15); 
+    /* استفاده از outline به جای border برای جلوگیری از تغییر ابعاد باکس */
+    outline: 3px dashed #6366f1; 
+    outline-offset: -3px; /* کشیدن خط به سمت داخل */
+    z-index: 50;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    /* حذف هرگونه transform که سایز را تغییر دهد */
+    transform: none !important; 
 }
 
 /* نشانگر موس برای جابجایی */
@@ -30,17 +38,17 @@
 
 /* -------------------------------------------------------------------------------------------------
    [SECTION 2] بج‌های مشخصات فنی (Spec Badges)
-   توضیح: برای نمایش پکیج، وات و تلرانس قطعات در جدول
 ------------------------------------------------------------------------------------------------- */
 .spec-badge {
     display: inline-flex;
     align-items: center;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 9px;
-    font-weight: 700; /* Bold */
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 8px;
+    font-weight: 700;
     border: 1px solid transparent;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
+    line-height: 1.1;
 }
 
 .badge-blue { 
@@ -68,11 +76,45 @@
 }
 
 /* -------------------------------------------------------------------------------------------------
-   [SECTION 3] انیمیشن‌های لیست (List Animations)
+   [SECTION 3] وضعیت ردیف‌ها (Row States)
+------------------------------------------------------------------------------------------------- */
+
+/* ردیف انتخاب شده (قطعه فعال) */
+.bom-item-row.is-selected {
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.0) 70%);
+    border-right-color: #10b981;
+}
+.bom-item-row.is-selected .text-white {
+    text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+/* ردیف غیرفعال */
+.bom-item-row.not-selected {
+    opacity: 0.5;
+    filter: grayscale(0.6);
+}
+.bom-item-row.not-selected:hover {
+    opacity: 0.8;
+    filter: grayscale(0);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* -------------------------------------------------------------------------------------------------
+   [SECTION 4] انیمیشن‌های لیست و سواپ
 ------------------------------------------------------------------------------------------------- */
 @keyframes slide-in {
     from { opacity: 0; transform: translateX(-10px); }
     to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes highlightPulse {
+    0% { background-color: rgba(16, 185, 129, 0.5); transform: scale(1.02); box-shadow: 0 0 15px rgba(16, 185, 129, 0.3); }
+    100% { background-color: transparent; transform: scale(1); box-shadow: none; }
+}
+
+.animate-swap {
+    animation: highlightPulse 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    z-index: 10;
 }
 
 .animate-in {
@@ -89,8 +131,7 @@
 }
 
 /* -------------------------------------------------------------------------------------------------
-   [SECTION 4] تنظیمات چاپ (Print Styles)
-   توضیح: این کلاس‌ها فقط زمانی که کاربر دکمه پرینت را می‌زند یا Ctrl+P می‌کند فعال می‌شوند.
+   [SECTION 5] تنظیمات چاپ
 ------------------------------------------------------------------------------------------------- */
 @media print {
     body { 
@@ -99,16 +140,10 @@
         font-family: 'Tahoma', sans-serif !important;
     }
 
-    /* مخفی کردن عناصر اضافی در پرینت */
-    .no-print, 
-    button, 
-    input, 
-    .glass-panel,
-    .sidebar-panel { 
+    .no-print, button, input, .glass-panel, .sidebar-panel { 
         display: none !important; 
     }
 
-    /* تنظیمات جدول برای پرینت */
     table {
         width: 100%;
         border-collapse: collapse;
@@ -122,7 +157,6 @@
         color: #000 !important;
     }
 
-    /* اطمینان از نمایش پس‌زمینه رنگی در پرینت */
     * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
