@@ -1,9 +1,10 @@
 // ====================================================================================================
-// نسخه: 0.37
+// نسخه: 0.39
 // فایل: EntryPage.jsx
 // تغییرات: 
-// - اصلاح دقیق حلقه رندر فیلدهای داینامیک برای جلوگیری از نمایش فیلدهای اضافی.
-// - حفظ تمام قابلیت‌های قبلی (سرچ، کیبورد، انصراف).
+// - تغییر نحوه نمایش فیلدهای لیست ۵ تا ۱۰ از Grid به Flex.
+// - اکنون اگر در یک ردیف (مثلاً فیلد ۵ و ۶)، یکی مخفی باشد، دیگری به صورت خودکار کل عرض را پر می‌کند.
+// - حفظ کامل کدهای قبلی.
 // ====================================================================================================
 
 const { useState, useEffect, useRef } = React;
@@ -270,6 +271,13 @@ const EntryPage = (props) => {
 
     const { serverStatus, globalConfig } = props;
 
+    // تعریف جفت‌های فیلدهای داینامیک برای چیدمان Flex
+    const dynamicPairs = [
+        ['list5', 'list6'],
+        ['list7', 'list8'],
+        ['list9', 'list10']
+    ];
+
     return (
         <ErrorBoundary>
             <div className="entry-page-container">
@@ -496,26 +504,46 @@ const EntryPage = (props) => {
                                         {isVisible('techs') && ( <SearchableDropdown label={getLabel('techs', 'تکنولوژی/نوع دقیق')} options={currentConfig.techs} value={formData.tech} onChange={(val)=>handleChange('tech', val)} disabled={!serverStatus} error={errors.tech} /> )}
                                     </div>
                                     
-                                    <div className="grid grid-cols-2 gap-3 mt-3">
-                                        {/* اصلاح نهایی حلقه: استفاده از isVisible برای اطمینان از مخفی بودن */}
-                                        {DYNAMIC_FIELDS_MAP.filter(f => f.key.startsWith('list')).map(field => {
-                                            if (!isVisible(field.key)) return null;
+                                    {/* تغییر: نمایش فیلدهای لیست به صورت Flex برای پر کردن فضا */}
+                                    {dynamicPairs.map((pair, idx) => {
+                                        const [k1, k2] = pair;
+                                        // پیدا کردن تنظیمات مربوط به هر فیلد در DYNAMIC_FIELDS_MAP
+                                        const f1 = DYNAMIC_FIELDS_MAP.find(f => f.key === k1);
+                                        const f2 = DYNAMIC_FIELDS_MAP.find(f => f.key === k2);
+                                        
+                                        const v1 = isVisible(k1);
+                                        const v2 = isVisible(k2);
 
-                                            const options = currentConfig[field.key] || [];
-                                            const label = getLabel(field.key, field.label);
-                                            return ( 
-                                                <SearchableDropdown 
-                                                    key={field.key} 
-                                                    label={label} 
-                                                    value={formData[field.stateKey]} 
-                                                    options={options} 
-                                                    onChange={val => handleChange(field.stateKey, val)} 
-                                                    disabled={!serverStatus} 
-                                                    error={errors[field.stateKey]} 
-                                                /> 
-                                            );
-                                        })}
-                                    </div>
+                                        // اگر هیچکدام نمایش داده نمی‌شوند، کل ردیف را رندر نکن
+                                        if (!v1 && !v2) return null;
+
+                                        return (
+                                            <div key={idx} className="flex gap-3 mt-3">
+                                                {v1 && (
+                                                    <SearchableDropdown 
+                                                        key={k1}
+                                                        label={getLabel(k1, f1?.label)}
+                                                        value={formData[f1?.stateKey]}
+                                                        options={currentConfig[k1] || []}
+                                                        onChange={val => handleChange(f1?.stateKey, val)}
+                                                        disabled={!serverStatus}
+                                                        error={errors[f1?.stateKey]}
+                                                    />
+                                                )}
+                                                {v2 && (
+                                                    <SearchableDropdown 
+                                                        key={k2}
+                                                        label={getLabel(k2, f2?.label)}
+                                                        value={formData[f2?.stateKey]}
+                                                        options={currentConfig[k2] || []}
+                                                        onChange={val => handleChange(f2?.stateKey, val)}
+                                                        disabled={!serverStatus}
+                                                        error={errors[f2?.stateKey]}
+                                                    />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                     
                                     <div className="h-px bg-white/5 my-2"></div>
                                     <div className="flex gap-3"><NexusInput label="تعداد *" type="number" value={formData.qty} onChange={e=>handleChange('qty', e.target.value)} onKeyPress={preventNonNumeric} className="flex-1" disabled={!serverStatus} error={errors.qty} /><NexusInput label="حداقل *" type="number" value={formData.min_qty} onChange={e=>handleChange('min_qty', e.target.value)} onKeyPress={preventNonNumeric} className="flex-1" disabled={!serverStatus} error={errors.min_qty} /></div>
