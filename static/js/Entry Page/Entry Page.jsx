@@ -1,9 +1,11 @@
 // ====================================================================================================
-// نسخه: 0.27
+// نسخه: 0.32
 // فایل: EntryPage.jsx
 // تغییرات: 
-// - اضافه شدن حالت Empty State برای جلوگیری از بریده شدن پاپ‌آپ فیلتر در زمان نبود نتیجه.
-// - بهینه‌سازی z-index و دسترسی‌های فیلتر.
+// - حل مشکل انتخاب نشدن آیتم با موس (با جلوگیری از Blur شدن اینپوت هنگام کلیک).
+// - اضافه شدن قابلیت پیمایش با کیبورد (Arrow Up/Down) و انتخاب با Enter.
+// - اسکرول هوشمند لیست هنگام حرکت با کیبورد.
+// - استفاده از useRef برای اعتبارسنجی دقیق‌تر و جلوگیری از باگ‌های لحظه‌ای.
 // ====================================================================================================
 
 const { useState, useEffect, useRef } = React;
@@ -95,32 +97,116 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
 const SearchableDropdown = ({ label, value, options, onChange, disabled, placeholder, error }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
+    const [selectedIndex, setSelectedIndex] = useState(-1); // ایندکس آیتم انتخاب شده با کیبورد
+    
     const wrapperRef = useRef(null);
+    const listRef = useRef(null); // رفرنس برای اسکرول خودکار لیست
+    const searchTermRef = useRef(""); // رفرنس برای دسترسی به آخرین مقدار در Timeout
+    
     const notify = useNotify();
 
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setIsOpen(false);
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    // همگام‌سازی state و ref با مقدار ورودی
+    useEffect(() => { 
+        setSearchTerm(value || ""); 
+    }, [value]);
 
-    useEffect(() => { setSearchTerm(value || ""); }, [value]);
+    useEffect(() => {
+        searchTermRef.current = searchTerm;
+    }, [searchTerm]);
 
     const filteredOptions = (options || []).filter(item => 
         String(item).toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleBlur = () => {
-        setTimeout(() => {
-            const exactMatch = (options || []).find(opt => String(opt) === searchTerm);
-            if (searchTerm && !exactMatch) {
-                notify.show('خطای انتخاب', `مقدار "${searchTerm}" در لیست مجاز نیست.`, 'error');
-                onChange("");
-                setSearchTerm("");
+    // ریست کردن ایندکس وقتی جستجو تغییر می‌کند
+    useEffect(() => {
+        setSelectedIndex(-1);
+    }, [searchTerm]);
+
+    // اسکرول خودکار به آیتم انتخاب شده با کیبورد
+    useEffect(() => {
+        if (isOpen && listRef.current && selectedIndex >= 0) {
+            const itemElement = listRef.current.children[selectedIndex];
+            if (itemElement) {
+                itemElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             }
+        }
+    }, [selectedIndex, isOpen]);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+                // اگر بیرون کلیک شد، اعتبارسنجی انجام شود (فقط اگر باز بود)
+                if (isOpen) validateAndClose();
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [isOpen]); // وابستگی به isOpen
+
+    const validateAndClose = () => {
+        const term = searchTermRef.current.trim();
+        
+        if (!term) {
+            onChange("");
+            setSearchTerm("");
             setIsOpen(false);
+            return;
+        }
+
+        const exactMatch = (options || []).find(opt => String(opt).toLowerCase() === term.toLowerCase());
+        
+        if (exactMatch) {
+            onChange(exactMatch);
+            setSearchTerm(exactMatch);
+        } else {
+            notify.show('خطای انتخاب', `مقدار "${term}" در لیست مجاز نیست.`, 'error');
+            onChange("");
+            setSearchTerm("");
+        }
+        setIsOpen(false);
+    };
+
+    const handleKeyDown = (e) => {
+        if (disabled) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (!isOpen) setIsOpen(true);
+            setSelectedIndex(prev => (prev < filteredOptions.length - 1 ? prev + 1 : prev));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (!isOpen) setIsOpen(true);
+            setSelectedIndex(prev => (prev > 0 ? prev - 1 : prev));
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (isOpen && selectedIndex >= 0 && filteredOptions[selectedIndex]) {
+                const selected = filteredOptions[selectedIndex];
+                onChange(selected);
+                setSearchTerm(selected);
+                setIsOpen(false);
+                setSelectedIndex(-1);
+            } else {
+                validateAndClose();
+            }
+        } else if (e.key === 'Escape') {
+            setIsOpen(false);
+        } else if (e.key === 'Tab') {
+            // اجازه دهید تب کار خودش را بکند (Blur)، اما لیست را ببندد
+            setIsOpen(false);
+            validateAndClose();
+        }
+    };
+
+    const handleBlur = () => {
+        // تاخیر کوچک برای هندل کردن کلیک‌های خارجی
+        setTimeout(() => {
+           // اعتبارسنجی در اینجا لازم نیست چون کلیک روی آیتم‌ها با onMouseDown هندل شده
+           // و کلیک بیرون با handleClickOutside.
+           // اما برای اطمینان از Tab زدن:
+           if (!wrapperRef.current.contains(document.activeElement)) {
+               validateAndClose();
+           }
         }, 200);
     };
 
@@ -135,6 +221,7 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
                     onChange={(e) => { setSearchTerm(e.target.value); setIsOpen(true); }}
                     onFocus={() => setIsOpen(true)}
                     onBlur={handleBlur}
+                    onKeyDown={handleKeyDown}
                     placeholder={placeholder || "انتخاب..."}
                     disabled={disabled}
                     dir="rtl"
@@ -145,13 +232,22 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
             </div>
 
             {isOpen && !disabled && (
-                <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto custom-scroll bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                <div 
+                    ref={listRef}
+                    className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto custom-scroll bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+                >
                     {filteredOptions.length > 0 ? (
                         filteredOptions.map((item, idx) => (
                             <div 
                                 key={idx}
-                                onClick={() => { onChange(item); setSearchTerm(item); setIsOpen(false); }}
-                                className="px-3 py-2 text-sm text-gray-300 hover:bg-nexus-primary/20 hover:text-white cursor-pointer transition-colors border-b border-white/5 last:border-0 font-mono"
+                                // نکته مهم: جلوگیری از بلور شدن اینپوت هنگام کلیک روی آیتم
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { 
+                                    onChange(item); 
+                                    setSearchTerm(item); 
+                                    setIsOpen(false); 
+                                }}
+                                className={`px-3 py-2 text-sm cursor-pointer transition-colors border-b border-white/5 last:border-0 ${idx === selectedIndex ? 'bg-nexus-primary text-white' : 'text-gray-300 hover:bg-nexus-primary/20 hover:text-white'}`}
                             >
                                 {item}
                             </div>
@@ -346,7 +442,11 @@ const EntryPage = (props) => {
                         <div className="col-span-12 lg:col-span-4 h-full order-1 lg:order-2">
                             <div className="glass-panel border-white/10 rounded-2xl p-5 h-full flex flex-col shadow-2xl relative">
                                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-nexus-primary to-purple-600"></div>
-                                <h2 className="text-lg font-bold text-white mb-6 flex items-center justify-between"><span>{formData.id ? 'ویرایش قطعه' : 'ثبت قطعه جدید'}</span>{formData.id && <button onClick={() => setFormData({id: null, val: "", unit: (currentConfig.units && currentConfig.units[0]) || "", watt: "", tol: "", pkg: "", type: formData.type, date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: "", vendor_name: "", location: "", tech: "", purchase_links: []})} className="text-xs text-gray-400 hover:text-white bg-white/5 px-2 py-1 rounded transition">انصراف</button>}</h2>
+                                <h2 className="text-lg font-bold text-white mb-6 flex items-center justify-between">
+                                    <span>{formData.id ? 'ویرایش قطعه' : 'ثبت قطعه جدید'}</span>
+                                    {/* اصلاح: دکمه انصراف اکنون نوع قطعه فعلی را حفظ می‌کند */}
+                                    {formData.id && <button onClick={() => setFormData({id: null, val: "", unit: (currentConfig.units && currentConfig.units[0]) || "", watt: "", tol: "", pkg: "", type: formData.type, date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", min_qty: "", vendor_name: "", location: "", tech: "", purchase_links: []})} className="text-xs text-gray-400 hover:text-white bg-white/5 px-2 py-1 rounded transition">انصراف</button>}
+                                </h2>
                                 
                                 {duplicates.length > 0 && !formData.id && (
                                     <div className="mb-6 bg-yellow-500/5 border border-yellow-500/20 rounded-2xl p-4 animate-in slide-in-from-top-2">
@@ -413,7 +513,18 @@ const EntryPage = (props) => {
                                             if (fConfig?.visible === false) return null;
                                             const options = currentConfig[field.key] || [];
                                             const label = getLabel(field.key, field.label);
-                                            return ( <NexusSelect key={field.key} label={label} value={formData[field.stateKey]} options={options} onChange={e => handleChange(field.stateKey, e.target.value)} disabled={!serverStatus} error={errors[field.stateKey]} /> );
+                                            // تغییر: استفاده از SearchableDropdown به جای NexusSelect
+                                            return ( 
+                                                <SearchableDropdown 
+                                                    key={field.key} 
+                                                    label={label} 
+                                                    value={formData[field.stateKey]} 
+                                                    options={options} 
+                                                    onChange={val => handleChange(field.stateKey, val)} 
+                                                    disabled={!serverStatus} 
+                                                    error={errors[field.stateKey]} 
+                                                /> 
+                                            );
                                         })}
                                     </div>
                                     
@@ -424,8 +535,9 @@ const EntryPage = (props) => {
                                         <NexusInput label="قیمت دلار (تومان) *" value={formData.usd_rate} onChange={e=>handleChange('usd_rate', e.target.value)} disabled={!serverStatus} error={errors.usd_rate} className="flex-1" />
                                     </div>
                                     <div className="flex gap-3">
-                                        <NexusSelect label={getLabel('location', 'آدرس نگهداری')} value={formData.location} onChange={e=>handleChange('location', e.target.value)} options={locationOptions} disabled={!serverStatus} error={errors.location} className="flex-1" />
-                                        <NexusSelect label="نام فروشنده *" value={formData.vendor_name} onChange={e=>handleChange('vendor_name', e.target.value)} options={vendorOptions} disabled={!serverStatus} error={errors.vendor_name} className="flex-1" />
+                                        {/* تغییر: استفاده از SearchableDropdown برای لوکیشن و فروشنده */}
+                                        <SearchableDropdown label={getLabel('location', 'آدرس نگهداری')} value={formData.location} onChange={val=>handleChange('location', val)} options={locationOptions} disabled={!serverStatus} error={errors.location} />
+                                        <SearchableDropdown label="نام فروشنده *" value={formData.vendor_name} onChange={val=>handleChange('vendor_name', val)} options={vendorOptions} disabled={!serverStatus} error={errors.vendor_name} />
                                     </div>
                                     <div className="flex gap-3 items-end">
                                         <div className="flex-1">
