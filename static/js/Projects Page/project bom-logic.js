@@ -331,11 +331,12 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
     };
 
     // ==================================================================================
-    // [Start] تابع پرینت تعاملی (با قابلیت Show/Hide ستون‌ها در هدر)
+    // [Start] تابع پرینت نهایی + خروجی اکسل (Excel Export)
     // ==================================================================================
     const handlePrintBOM = () => {
-        // 1. آماده‌سازی داده‌ها
+        // 1. آماده‌سازی و مرتب‌سازی داده‌ها
         const activeList = [];
+        
         bomItems.forEach(item => {
             const active = item.isSelected ? item : item.alternatives.find(a => a.isSelected);
             if (active) {
@@ -344,7 +345,7 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                 const shortage = Math.max(0, totalNeeded - currentInventory);
                 
                 activeList.push({
-                    code: active.part_code,
+                    code: active.part_code || '',
                     name: active.val,
                     specs: [active.package, active.watt, active.tolerance, active.tech].filter(Boolean).join(' - '),
                     vendor: active.vendor_name,
@@ -358,7 +359,14 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
             }
         });
 
-        // آیکون‌های SVG برای چشم باز و بسته
+        // مرتب‌سازی بر اساس کد کالا
+        activeList.sort((a, b) => a.code.toString().localeCompare(b.code.toString()));
+
+        // تبدیل داده‌ها به JSON رشته‌ای برای استفاده در اسکریپت دانلود اکسل
+        const jsonForExcel = JSON.stringify(activeList);
+        const projectName = activeProject?.name || 'Project';
+
+        // آیکون‌های چشم
         const iconEyeOpen = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
         const iconEyeOff = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.05A10.59 10.59 0 0 1 12 5c7 0 10 7 10 7a13.12 13.12 0 0 1-4.24 5.24"/><path d="M22 22l-1 1"/><path d="M12 22c-7 0-10-7-10-7a13.12 13.12 0 0 1 4-5.23"/><path d="M2 2l20 20"/></svg>`;
 
@@ -377,72 +385,105 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                     body { padding: 15px; color: #000; margin: 0; }
 
                     /* --- جدول --- */
-                    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-                    
-                    th, td { border: 1px solid #444; padding: 4px; text-align: center; font-size: 10px; vertical-align: middle; transition: all 0.2s; }
-                    th { background-color: #eee; font-weight: bold; font-size: 11px; height: 35px; position: relative; }
-                    
-                    /* استایل دکمه چشم در هدر */
-                    .col-toggle {
-                        cursor: pointer;
-                        display: inline-flex;
-                        align-items: center;
-                        justify-content: center;
-                        margin-right: 5px;
-                        padding: 2px;
-                        border-radius: 4px;
-                        vertical-align: middle;
+                    table { 
+                        width: 100%; 
+                        border-collapse: collapse; 
+                        margin-bottom: 20px; 
+                        table-layout: auto; 
                     }
-                    .col-toggle:hover { background-color: #ddd; }
+                    
+                    th, td { 
+                        border: 1px solid #444; 
+                        padding: 4px; 
+                        text-align: center; 
+                        font-size: 10px; 
+                        vertical-align: middle; 
+                    }
+                    th { background-color: #eee; font-weight: bold; font-size: 11px; height: 35px; white-space: nowrap; }
+                    
+                    /* --- استایل شکستن متن --- */
+                    .col-name-cell {
+                        text-align: right;
+                        padding-right: 5px;
+                        white-space: normal;
+                        word-wrap: break-word;
+                        line-height: 1.4;
+                    }
 
-                    /* کلاس‌های وضعیت مخفی */
-                    .hidden-print {
-                        /* در حالت نمایش معمولی، فقط کمرنگ شود */
-                        opacity: 0.2;
-                        background-color: #f0f0f0;
-                        color: #ccc !important;
-                        border-color: #eee;
-                    }
+                    .col-toggle { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-right: 5px; padding: 2px; border-radius: 4px; vertical-align: middle; }
+                    .col-toggle:hover { background-color: #ddd; }
+                    .hidden-print { opacity: 0.2; background-color: #f0f0f0; color: #ccc !important; border-color: #eee; }
                     
+                    /* --- استایل‌های خاص انبار --- */
                     .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
-                    .header h1 { margin: 5px 0; font-size: 20px; font-weight: bold; }
                     .project-info { display: flex; justify-content: space-between; margin-bottom: 15px; background: #f9f9f9; padding: 8px 12px; border: 1px solid #999; font-size: 11px; font-weight: bold; border-radius: 4px; }
                     
                     .specs { font-size: 9px; color: #555; display: block; margin-top: 2px; }
                     .check-box { width: 12px; height: 12px; border: 1px solid #000; display: inline-block; }
                     .shortage-cell { background-color: #ffebee; color: #d32f2f; font-weight: bold; }
                     
-                    .footer { margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px; font-size: 10px; font-weight: bold; }
+                    /* --- بخش امضاها --- */
+                    .signature-section {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-top: 40px;
+                        border: 1px solid #000;
+                        page-break-inside: avoid;
+                    }
+                    .sig-box {
+                        flex: 1;
+                        height: 100px;
+                        border-left: 1px solid #000;
+                        padding: 5px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    .sig-box:last-child { border-left: none; }
+                    .sig-line { margin-top: auto; border-bottom: 1px dotted #000; width: 80%; margin-bottom: 15px; align-self: center; }
 
-                    /* تنظیمات چاپ */
+                    .footer { margin-top: 10px; font-size: 10px; color: #666; }
+
                     @media print { 
                         @page { margin: 0.5cm; } 
                         body { padding: 0; }
-                        
-                        /* آیتم‌های کنترلی در پرینت حذف شوند */
                         .no-print, .col-toggle { display: none !important; }
-                        
-                        /* ستونی که مخفی شده، در پرینت کلاً حذف شود */
                         .hidden-print { display: none !important; }
                     }
 
-                    .print-actions { text-align: center; margin-bottom: 20px; padding: 10px; background: #fffde7; border: 1px solid #eab308; border-radius: 8px; font-size: 11px; color: #854d0e; }
+                    /* --- استایل دکمه‌های بالای صفحه --- */
+                    .print-actions { 
+                        text-align: center; margin-bottom: 20px; padding: 15px; 
+                        background: #fffde7; border: 1px solid #eab308; border-radius: 8px; 
+                        font-size: 11px; color: #854d0e; display: flex; flex-direction: column; align-items: center; gap: 12px;
+                    }
+                    .btn-group { display: flex; gap: 10px; justify-content: center; }
+                    .btn-print { cursor:pointer; padding:8px 25px; background:#000; color:#fff; border:none; border-radius:6px; font-family:inherit; font-weight:bold; font-size: 12px; }
+                    .btn-excel { cursor:pointer; padding:8px 25px; background:#10b981; color:#fff; border:none; border-radius:6px; font-family:inherit; font-weight:bold; font-size: 12px; display: flex; align-items: center; gap: 5px; }
+                    .btn-excel:hover { background: #059669; }
                 </style>
             </head>
             <body>
                 
                 <div class="no-print print-actions">
-                    <span style="font-weight:bold; font-size:14px; vertical-align:middle">💡 راهنما:</span>
-                    با کلیک روی آیکون چشم (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>) در بالای هر ستون، می‌توانید آن ستون را برای چاپ حذف کنید.
-                    <br/><br/>
-                    <button onclick="window.print()" style="cursor:pointer; padding:8px 20px; background:#000; color:#fff; border:none; border-radius:5px; font-family:inherit; font-weight:bold;">چاپ نهایی (Ctrl+P)</button>
+                    <div>
+                        <span style="font-weight:bold; font-size:14px; vertical-align:middle">💡 پنل چاپ و خروجی:</span>
+                         قطعات بر اساس <b>کد کالا</b> مرتب شده‌اند. برای مخفی کردن ستون‌ها روی آیکون چشم کلیک کنید.
+                    </div>
+                    <div class="btn-group">
+                        <button onclick="window.print()" class="btn-print">چاپ / ذخیره PDF (Ctrl+P)</button>
+                        <button onclick="downloadExcel()" class="btn-excel">
+                            <span>دانلود فایل اکسل (Excel)</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="header">
                     <div style="text-align:center; margin-bottom:5px;">
                         <img src="/static/logo.png" alt="Logo" onerror="this.style.display='none';" style="height:50px;" />
                     </div>
-                    <h1>لیست قطعات پروژه (BOM)</h1>
+                    <h3>حواله خروج کالا / لیست BOM</h3>
                     <div style="font-size: 10px;">سیستم مدیریت هوشمند انبار H&Y</div>
                 </div>
                 
@@ -463,24 +504,30 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                                 <span class="col-toggle" onclick="toggleCol('col-code', this)">${iconEyeOpen}</span>
                             </th>
                             
-                            <th>نام قطعه و مشخصات فنی</th>
-                            <th style="width:40px">واحد</th>
-                            <th style="width:40px">تعداد</th>
-                            <th style="width:50px">نیاز کل</th>
+                            <th style="width:30%; min-width:150px">نام قطعه و مشخصات فنی</th>
                             
-                            <th class="col-inv" style="width:50px">
+                            <th style="width:30px">واحد</th>
+                            <th style="width:40px">تعداد</th>
+                            <th style="width:40px">نیاز کل</th>
+                            
+                            <th class="col-inv" style="width:40px">
                                 موجودی
                                 <span class="col-toggle" onclick="toggleCol('col-inv', this)">${iconEyeOpen}</span>
                             </th>
                             
-                            <th class="col-shortage" style="width:50px; color:#d32f2f">
+                            <th class="col-shortage" style="width:40px; color:#d32f2f">
                                 کسری
                                 <span class="col-toggle" onclick="toggleCol('col-shortage', this)">${iconEyeOpen}</span>
                             </th>
                             
-                            <th class="col-loc" style="width:80px">
+                            <th class="col-loc" style="width:50px">
                                 محل انبار
                                 <span class="col-toggle" onclick="toggleCol('col-loc', this)">${iconEyeOpen}</span>
+                            </th>
+
+                            <th class="col-note">
+                                ملاحظات انبار
+                                <span class="col-toggle" onclick="toggleCol('col-note', this)">${iconEyeOpen}</span>
                             </th>
                         </tr>
                     </thead>
@@ -493,10 +540,12 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                                     <td><div class="check-box"></div></td>
                                     <td>${idx + 1}</td>
                                     <td class="col-code" style="font-family: monospace !important;">${item.code}</td>
-                                    <td style="text-align:right; padding-right:5px">
+                                    
+                                    <td class="col-name-cell">
                                         <strong>${item.name}</strong>
                                         <span class="specs">${item.specs}</span>
                                     </td>
+                                    
                                     <td>${item.unit}</td>
                                     <td>${item.qty}</td>
                                     <td style="font-weight:bold">${item.totalNeeded}</td>
@@ -504,38 +553,98 @@ window.useProjectBomLogic = (initialProject, initialRate) => {
                                     <td class="col-inv" style="color:#555">${item.inventory}</td>
                                     <td class="col-shortage ${shortageClass}">${shortageText}</td>
                                     <td class="col-loc" style="font-size:9px">${item.location}</td>
+                                    
+                                    <td class="col-note"></td>
                                 </tr>
                             `;
                         }).join('')}
                     </tbody>
                 </table>
 
+                <div class="signature-section">
+                    <div class="sig-box">
+                        <span>درخواست کننده (تولید):</span>
+                        <div class="sig-line"></div>
+                    </div>
+                    <div class="sig-box">
+                        <span>اقدام کننده (انبار):</span>
+                        <div class="sig-line"></div>
+                    </div>
+                    <div class="sig-box">
+                        <span>تایید نهایی / تحویل گیرنده:</span>
+                        <div class="sig-line"></div>
+                    </div>
+                </div>
+
                 <div class="footer">
-                    <div class="totals-box">
+                    <div style="float:left">
                         <span>تنوع: ${totals.variety} قلم</span> | 
                         <span>مجموع قطعات: ${totals.totalParts} عدد</span>
                     </div>
+                    <div style="clear:both"></div>
                 </div>
 
                 <script>
                     const svgOpen = \`${iconEyeOpen}\`;
                     const svgClosed = \`${iconEyeOff}\`;
 
+                    // 1. منطق مخفی سازی ستون‌ها (قابلیت قبلی)
                     function toggleCol(colClass, btn) {
                         const cells = document.querySelectorAll('.' + colClass);
                         if (cells.length === 0) return;
-                        
                         const isHidden = cells[0].classList.contains('hidden-print');
-                        
                         cells.forEach(cell => {
-                            if (isHidden) {
-                                cell.classList.remove('hidden-print');
-                            } else {
-                                cell.classList.add('hidden-print');
-                            }
+                            if (isHidden) cell.classList.remove('hidden-print');
+                            else cell.classList.add('hidden-print');
+                        });
+                        btn.innerHTML = isHidden ? svgOpen : svgClosed;
+                    }
+
+                    // 2. منطق دانلود اکسل (قابلیت جدید)
+                    function downloadExcel() {
+                        const data = ${jsonForExcel};
+                        const fileName = 'BOM-${projectName}.csv';
+                        
+                        // هدرهای اکسل
+                        let csvContent = "ردیف,کد کالا,نام قطعه و مشخصات,واحد,تعداد در برد,نیاز کل,موجودی انبار,کسری,محل انبار,ملاحظات\\n";
+                        
+                        data.forEach((item, index) => {
+                            // تمیزکاری متن‌ها برای جلوگیری از به هم ریختگی CSV
+                            // اگر متن حاوی کاما باشد، باید داخل کوتیشن قرار بگیرد
+                            const code = '"' + (item.code || '') + '"'; // کد را داخل کوتیشن میذاریم تا اکسل عدد فرض نکند و صفر اولش پاک نشه
+                            const name = '"' + item.name.replace(/"/g, '""') + ' ' + item.specs.replace(/"/g, '""') + '"';
+                            const location = '"' + (item.location || '') + '"';
+                            
+                            const row = [
+                                index + 1,
+                                code,
+                                name,
+                                item.unit,
+                                item.qty,
+                                item.totalNeeded,
+                                item.inventory,
+                                item.shortage,
+                                location,
+                                "" // ستون خالی ملاحظات
+                            ];
+                            
+                            csvContent += row.join(",") + "\\n";
                         });
 
-                        btn.innerHTML = isHidden ? svgOpen : svgClosed;
+                        // ایجاد فایل با انکودینگ UTF-8 BOM (برای پشتیبانی صحیح فارسی در اکسل)
+                        const blob = new Blob(["\\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                        
+                        // ایجاد لینک دانلود مجازی و کلیک روی آن
+                        const link = document.createElement("a");
+                        if (link.download !== undefined) { 
+                            const url = URL.createObjectURL(blob);
+                            link.setAttribute("href", url);
+                            link.setAttribute("download", fileName);
+                            link.style.visibility = 'hidden';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        }
                     }
                 </script>
             </body>
