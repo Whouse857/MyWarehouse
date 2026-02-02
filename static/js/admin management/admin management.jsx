@@ -1,7 +1,10 @@
 // ====================================================================================================
-// نسخه: 0.28 (نهایی - رابط کاربری کامل با پشتیبانی از اعداد و تاریخ فارسی)
+// نسخه: 0.36
 // فایل: admin management.jsx
-// توضیح: این فایل مسئول نمایش ظاهر (JSX) است و منطق را از هوک دریافت می‌کند.
+// تغییرات: 
+// - اصلاح منطق دکمه‌های "نمایش" و "الزامی" برای حل مشکل تداخل.
+// - حفظ تمام خطوط کد و توابع کمکی.
+// - تغییر شرط isVisible و isRequired برای اینکه در صورت نبود تنظیمات، پیش‌فرض "خاموش" باشند.
 // ====================================================================================================
 
 // اطمینان از دسترسی به React برای پردازش JSX
@@ -261,8 +264,12 @@ const ManagementPage = ({ globalConfig, onConfigUpdate }) => {
                                     // دریافت تنظیمات ذخیره شده برای این فیلد
                                     const fieldSettings = config[selectedType].fields?.[listName] || {};
                                     const displayLabel = fieldSettings.label || meta.label;
-                                    const isRequired = !!fieldSettings.required;
-                                    const isVisible = fieldSettings.visible !== false; // پیش‌فرض نمایش داده شود
+                                    
+                                    // [اصلاح]: استفاده از مقایسه دقیق با true.
+                                    // اگر تنظیماتی وجود نداشته باشد (undefined)، نتیجه false (خاموش) می‌شود.
+                                    // این مشکل نمایش پیش‌فرض را در دسته‌های جدید حل می‌کند.
+                                    const isRequired = fieldSettings.required === true;
+                                    const isVisible = fieldSettings.visible === true;
 
                                     return (
                                         <div key={listName} className="bg-slate-900/50 p-4 rounded-xl border border-white/5 hover:border-white/10 transition group/card">

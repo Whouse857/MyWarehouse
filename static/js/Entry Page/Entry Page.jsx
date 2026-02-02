@@ -1,11 +1,9 @@
 // ====================================================================================================
-// نسخه: 0.32
+// نسخه: 0.37
 // فایل: EntryPage.jsx
 // تغییرات: 
-// - حل مشکل انتخاب نشدن آیتم با موس (با جلوگیری از Blur شدن اینپوت هنگام کلیک).
-// - اضافه شدن قابلیت پیمایش با کیبورد (Arrow Up/Down) و انتخاب با Enter.
-// - اسکرول هوشمند لیست هنگام حرکت با کیبورد.
-// - استفاده از useRef برای اعتبارسنجی دقیق‌تر و جلوگیری از باگ‌های لحظه‌ای.
+// - اصلاح دقیق حلقه رندر فیلدهای داینامیک برای جلوگیری از نمایش فیلدهای اضافی.
+// - حفظ تمام قابلیت‌های قبلی (سرچ، کیبورد، انصراف).
 // ====================================================================================================
 
 const { useState, useEffect, useRef } = React;
@@ -97,15 +95,14 @@ const SummaryModal = ({ isOpen, onClose, onConfirm, data, globalConfig }) => {
 const SearchableDropdown = ({ label, value, options, onChange, disabled, placeholder, error }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
-    const [selectedIndex, setSelectedIndex] = useState(-1); // ایندکس آیتم انتخاب شده با کیبورد
+    const [selectedIndex, setSelectedIndex] = useState(-1);
     
     const wrapperRef = useRef(null);
-    const listRef = useRef(null); // رفرنس برای اسکرول خودکار لیست
-    const searchTermRef = useRef(""); // رفرنس برای دسترسی به آخرین مقدار در Timeout
+    const listRef = useRef(null);
+    const searchTermRef = useRef("");
     
     const notify = useNotify();
 
-    // همگام‌سازی state و ref با مقدار ورودی
     useEffect(() => { 
         setSearchTerm(value || ""); 
     }, [value]);
@@ -118,12 +115,10 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
         String(item).toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    // ریست کردن ایندکس وقتی جستجو تغییر می‌کند
     useEffect(() => {
         setSelectedIndex(-1);
     }, [searchTerm]);
 
-    // اسکرول خودکار به آیتم انتخاب شده با کیبورد
     useEffect(() => {
         if (isOpen && listRef.current && selectedIndex >= 0) {
             const itemElement = listRef.current.children[selectedIndex];
@@ -136,13 +131,12 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-                // اگر بیرون کلیک شد، اعتبارسنجی انجام شود (فقط اگر باز بود)
                 if (isOpen) validateAndClose();
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [isOpen]); // وابستگی به isOpen
+    }, [isOpen]);
 
     const validateAndClose = () => {
         const term = searchTermRef.current.trim();
@@ -192,19 +186,14 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
         } else if (e.key === 'Escape') {
             setIsOpen(false);
         } else if (e.key === 'Tab') {
-            // اجازه دهید تب کار خودش را بکند (Blur)، اما لیست را ببندد
             setIsOpen(false);
             validateAndClose();
         }
     };
 
     const handleBlur = () => {
-        // تاخیر کوچک برای هندل کردن کلیک‌های خارجی
         setTimeout(() => {
-           // اعتبارسنجی در اینجا لازم نیست چون کلیک روی آیتم‌ها با onMouseDown هندل شده
-           // و کلیک بیرون با handleClickOutside.
-           // اما برای اطمینان از Tab زدن:
-           if (!wrapperRef.current.contains(document.activeElement)) {
+           if (wrapperRef.current && !wrapperRef.current.contains(document.activeElement)) {
                validateAndClose();
            }
         }, 200);
@@ -240,7 +229,6 @@ const SearchableDropdown = ({ label, value, options, onChange, disabled, placeho
                         filteredOptions.map((item, idx) => (
                             <div 
                                 key={idx}
-                                // نکته مهم: جلوگیری از بلور شدن اینپوت هنگام کلیک روی آیتم
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => { 
                                     onChange(item); 
@@ -496,6 +484,7 @@ const EntryPage = (props) => {
                                     <div className="h-px bg-white/5 my-1"></div>
                                     <div className="flex gap-3">
                                         <NexusInput label="مقدار (Value) *" value={formData.val} onChange={e=>handleChange('val', e.target.value)} placeholder="مثلا 100" className="flex-1" disabled={!serverStatus} dir="rtl" error={errors.val} />
+                                        {/* استفاده از isVisible */}
                                         {isVisible('units') && ( <SearchableDropdown label={getLabel('units', 'واحد')} options={currentConfig.units} value={formData.unit} onChange={(val)=>handleChange('unit', val)} disabled={!serverStatus} error={errors.unit} /> )}
                                     </div>
                                     <div className="flex gap-3">
@@ -508,12 +497,12 @@ const EntryPage = (props) => {
                                     </div>
                                     
                                     <div className="grid grid-cols-2 gap-3 mt-3">
+                                        {/* اصلاح نهایی حلقه: استفاده از isVisible برای اطمینان از مخفی بودن */}
                                         {DYNAMIC_FIELDS_MAP.filter(f => f.key.startsWith('list')).map(field => {
-                                            const fConfig = currentConfig.fields?.[field.key];
-                                            if (fConfig?.visible === false) return null;
+                                            if (!isVisible(field.key)) return null;
+
                                             const options = currentConfig[field.key] || [];
                                             const label = getLabel(field.key, field.label);
-                                            // تغییر: استفاده از SearchableDropdown به جای NexusSelect
                                             return ( 
                                                 <SearchableDropdown 
                                                     key={field.key} 
@@ -535,7 +524,6 @@ const EntryPage = (props) => {
                                         <NexusInput label="قیمت دلار (تومان) *" value={formData.usd_rate} onChange={e=>handleChange('usd_rate', e.target.value)} disabled={!serverStatus} error={errors.usd_rate} className="flex-1" />
                                     </div>
                                     <div className="flex gap-3">
-                                        {/* تغییر: استفاده از SearchableDropdown برای لوکیشن و فروشنده */}
                                         <SearchableDropdown label={getLabel('location', 'آدرس نگهداری')} value={formData.location} onChange={val=>handleChange('location', val)} options={locationOptions} disabled={!serverStatus} error={errors.location} />
                                         <SearchableDropdown label="نام فروشنده *" value={formData.vendor_name} onChange={val=>handleChange('vendor_name', val)} options={vendorOptions} disabled={!serverStatus} error={errors.vendor_name} />
                                     </div>

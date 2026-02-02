@@ -1,9 +1,8 @@
 // ====================================================================================================
-// نسخه: 0.28
+// نسخه: 0.35
 // فایل: entry page-logic.js
 // تغییرات: 
-// - رفع خطاهای سینتکسی مربوط به کاراکترهای اسکیپ شده در نسخه قبلی.
-// - حفظ کامل منطق فیلتر پیشرفته و موتور جستجوی قطعات.
+// - اصلاح تابع getLabel و isVisible برای هماهنگی با تنظیمات پیش‌فرض "مخفی" و "غیرالزامی".
 // ====================================================================================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
@@ -281,10 +280,10 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
 
         DYNAMIC_FIELDS_MAP.forEach(field => {
             const fieldConfig = typeConfig.fields?.[field.key];
-            const isDefaultVisible = ['units','paramOptions','packages','techs'].includes(field.key);
-            const isVisible = fieldConfig ? fieldConfig.visible : isDefaultVisible;
-            const isDefaultRequired = ['units','packages'].includes(field.key);
-            const isRequired = fieldConfig ? fieldConfig.required : isDefaultRequired;
+            // [اصلاح]: برای دسته‌های جدید که تنظیمات ندارند، پیش‌فرض نمایان بودن False است
+            const isVisible = fieldConfig ? !!fieldConfig.visible : false;
+            // [اصلاح]: برای دسته‌های جدید، پیش‌فرض الزامی بودن False است
+            const isRequired = fieldConfig ? !!fieldConfig.required : false;
 
             if (isVisible && isRequired) {
                 if (!formData[field.stateKey]) newErrors[field.stateKey] = true;
@@ -395,14 +394,18 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
         const configKey = isLoc ? 'locations' : key;
         const fConfig = targetConfig?.fields?.[configKey];
         const label = fConfig?.label || defaultLabel;
-        const isRequired = fConfig ? fConfig.required : ['units', 'packages', 'location'].includes(key);
+        
+        // [اصلاح]: برای دسته‌های جدید، پیش‌فرض الزامی بودن False است (مگر لوکیشن)
+        const defaultRequired = isLoc ? true : false;
+        const isRequired = fConfig ? !!fConfig.required : defaultRequired;
+        
         return label + (isRequired ? " *" : "");
     };
 
     const isVisible = (key) => {
         const fConfig = currentConfig.fields?.[key];
-        const isBase = ['units', 'paramOptions', 'packages', 'techs', 'tolerances'].includes(key);
-        return fConfig ? fConfig.visible : isBase;
+        // [اصلاح]: برای دسته‌های جدید که تنظیمات ندارند، همه چیز پیش‌فرض مخفی است
+        return fConfig ? !!fConfig.visible : false;
     };
 
     return {
