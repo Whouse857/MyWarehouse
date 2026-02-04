@@ -298,15 +298,101 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
         setShowSummary(true);
     };
 
+    // [نسخه نهایی: اگر تغییری نبود، فرم را ببند و ریست کن]
     const handleFinalSubmit = async () => {
+        // ۱. ساخت مقدار کامل (عدد + واحد)
         let fullVal = formData.val;
         if(formData.unit && formData.unit !== "-") fullVal += formData.unit;
 
-        const payload = { ...formData, val: fullVal, qty: Number(formData.qty) || 0, min_qty: Number(formData.min_qty) || 1, price: String(formData.price_toman).replace(/,/g, ''), usd_rate: String(formData.usd_rate).replace(/,/g, ''), username: user.username , invoice_number: formData.invoice_number};
+        // ۲. محاسبه تغییرات
+        let changeReport = "";
+        
+        if (formData.id) {
+            const oldPart = partsList.find(p => String(p.id) === String(formData.id));
+            
+            if (oldPart) {
+                const changes = [];
+                // تابع تمیزکننده (حذف ویرگول و فاصله)
+                const clean = (val) => String(val || '').replace(/,/g, '').trim();
+
+                // الف) مقایسه مقدار اصلی (val + unit)
+                const oldValFull = clean(oldPart.val);
+                const newValFull = clean(fullVal);
+                if (oldValFull !== newValFull) changes.push(`نام/مقدار: ${oldValFull} -> ${newValFull}`);
+
+                // ب) مقایسه سایر فیلدهای ثابت
+                const otherChecks = [
+                    { form: 'qty', db: 'quantity', label: 'تعداد' },
+                    { form: 'min_qty', db: 'min_quantity', label: 'حداقل' },
+                    { form: 'price_toman', db: 'toman_price', label: 'قیمت' },
+                    { form: 'usd_rate', db: 'usd_rate', label: 'قیمت دلار' },
+                    { form: 'vendor_name', db: 'vendor_name', label: 'فروشنده' },
+                    { form: 'location', db: 'storage_location', label: 'محل نگهداری' },
+                    { form: 'invoice_number', db: 'invoice_number', label: 'فاکتور' },
+                    { form: 'reason', db: 'reason', label: 'دلیل/پروژه' },
+                    { form: 'watt', db: 'watt', label: 'وات/مشخصه' },
+                    { form: 'tech', db: 'tech', label: 'تکنولوژی' },
+                    { form: 'pkg', db: 'package', label: 'پکیج' },
+                    { form: 'tol', db: 'tolerance', label: 'تولرانس' }
+                ];
+
+                otherChecks.forEach(item => {
+                    if (clean(oldPart[item.db]) !== clean(formData[item.form])) {
+                        changes.push(`${item.label}: ${clean(oldPart[item.db]) || '-'} -> ${clean(formData[item.form]) || '-'}`);
+                    }
+                });
+
+                // ج) مقایسه فیلدهای لیست ۵ تا ۱۰
+                DYNAMIC_FIELDS_MAP.forEach(field => {
+                    if (field.stateKey === 'unit') return; // قبلا چک شد
+                    if (field.key.startsWith('list')) { // فقط لیست‌ها باقی مانده‌اند
+                        const faLabel = getLabel(field.key, field.label).replace(' *', '');
+                        if (clean(oldPart[field.stateKey]) !== clean(formData[field.stateKey])) {
+                            changes.push(`${faLabel}: ${clean(oldPart[field.stateKey]) || '-'} -> ${clean(formData[field.stateKey]) || '-'}`);
+                        }
+                    }
+                });
+
+                // د) اگر هیچ تغییری نبود -> ببند و ریست کن!
+                if (changes.length === 0) {
+                    notify.show('بدون تغییر', 'هیچ اطلاعاتی تغییر نکرده است.', 'info');
+                    
+                    // --- بستن فرم و ریست کردن (همان کاری که بعد از ذخیره موفق انجام می‌دهیم) ---
+                    const typeConfig = globalConfig?.[formData.type] || globalConfig?.["Resistor"] || {};
+                    const defUnit = (typeConfig.units && typeConfig.units[0]) || "";
+                    
+                    setFormData({ 
+                        id: null, val: "", unit: defUnit, watt: "", tol: "", pkg: "", type: formData.type, 
+                        date: getJalaliDate(), qty: "", price_toman: "", usd_rate: "", reason: "", 
+                        min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [],
+                        list5: "", list6: "", list7: "", list8: "", list9: "", list10: "" 
+                    });
+                    setShowSummary(false); // بستن مودال خلاصه
+                    return; // پایان تابع
+                }
+
+                changeReport = changes.join(" | ");
+            }
+        }
+
+        // ۳. ارسال به سرور (فقط اگر تغییری بود به اینجا می‌رسد)
+        const payload = { 
+            ...formData, 
+            val: fullVal, 
+            qty: Number(formData.qty) || 0, 
+            min_qty: Number(formData.min_qty) || 1, 
+            price: String(formData.price_toman).replace(/,/g, ''), 
+            usd_rate: String(formData.usd_rate).replace(/,/g, ''), 
+            username: user.username, 
+            invoice_number: formData.invoice_number,
+            edit_reason: changeReport 
+        };
+
         try { 
             const { ok, data } = await fetchAPI('/save', { method: 'POST', body: payload });
             if (ok) { 
                 loadData(); 
+                // ریست کردن فرم بعد از ذخیره موفق
                 const typeConfig = globalConfig?.[formData.type] || globalConfig?.["Resistor"] || {};
                 const defUnit = (typeConfig.units && typeConfig.units[0]) || "";
                 
@@ -316,7 +402,7 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
                     min_qty: 1, vendor_name: "", location: "", tech: "", purchase_links: [],
                     list5: "", list6: "", list7: "", list8: "", list9: "", list10: "" 
                 });
-                notify.show('موفقیت', 'قطعه با موفقیت در انبار ذخیره شد.', 'success');
+                notify.show('موفقیت', 'قطعه با موفقیت ذخیره شد.', 'success');
                 setShowSummary(false);
             } else {
                  notify.show('خطا', data.error || 'خطا در ذخیره اطلاعات', 'error');
@@ -324,6 +410,7 @@ const useEntryPageLogic = ({ serverStatus, user, globalConfig }) => {
         } catch(e) { notify.show('خطای سرور', 'خطا در برقراری ارتباط با سرور.', 'error'); }
     };
 
+    
     const handleEdit = (p) => {
         let category = p.type || "Resistor"; 
         if (!globalConfig?.[category]) {

@@ -690,8 +690,14 @@ def register_routes(app, server_state):
                         elif qty_change < 0: op = 'UPDATE (Decrease)'
                         else: op = 'UPDATE (Edit)'
                         
-                        # [استفاده از تابع هوشمند] تولید گزارش تغییرات
-                        final_edit_report = generate_change_report(old_data, payload)
+                        # --- شروع تغییر: اولویت با متنی است که از کلاینت آمده ---
+                        client_reason = d.get("edit_reason")
+                        if client_reason:
+                            final_edit_report = client_reason
+                        else:
+                            # اگر کلاینت چیزی نفرستاد، سرور خودش حساب کند (حالت فال‌بک)
+                            final_edit_report = generate_change_report(old_data, payload)
+                        # --- پایان تغییر ---
                         
                         # قانون مهم: اگر هیچ چیزی تغییر نکرده، عملیات را کنسل کن
                         if qty_change == 0 and not final_edit_report:

@@ -28,64 +28,197 @@ const toPersianDigitsUI = (str) => {
 
 // ----------------------------------------------------------------------------------------------------
 // [تگ: مودال ویرایش لاگ]
-// کامپوننت EditLogModal که قبلاً در Extra Pages بود.
+// نسخه نهایی: هماهنگی کامل با Entry Page و خواندن دقیق نام‌ها از تنظیمات
 // ----------------------------------------------------------------------------------------------------
-const EditLogModal = ({ isOpen, onClose, onSave, log }) => {
-    const [qty, setQty] = useState(0);
-    const [reason, setReason] = useState("");
-    const [editReason, setEditReason] = useState(""); 
+const EditLogModal = ({ isOpen, onClose, onSave, log, config }) => {
+    const [formData, setFormData] = useState({});
+    const [manualEditReason, setManualEditReason] = useState("");
+
+    // ۱. استفاده از مپینگ سراسری (Window) برای اطمینان از یکی بودن نام‌ها با صفحه ورود
+    // اگر window.DYNAMIC_FIELDS_MAP لود نشده بود، از نسخه لوکال استفاده می‌کند.
+    const DYNAMIC_FIELDS_MAP = React.useMemo(() => {
+        if (window.DYNAMIC_FIELDS_MAP) return window.DYNAMIC_FIELDS_MAP;
+        
+        // فال‌بک (اگر Entry Page لود نشده باشد)
+        return [
+            { key: 'units', stateKey: 'unit', label: 'واحد' },
+            { key: 'tolerances', stateKey: 'tol', label: 'تولرانس' },
+            { key: 'paramOptions', stateKey: 'watt', label: 'مشخصه فنی' },
+            { key: 'packages', stateKey: 'pkg', label: 'پکیج' },
+            { key: 'techs', stateKey: 'tech', label: 'تکنولوژی' },
+            { key: 'list5', stateKey: 'list5', label: 'فیلد ۵' },
+            { key: 'list6', stateKey: 'list6', label: 'فیلد ۶' },
+            { key: 'list7', stateKey: 'list7', label: 'فیلد ۷' },
+            { key: 'list8', stateKey: 'list8', label: 'فیلد ۸' },
+            { key: 'list9', stateKey: 'list9', label: 'فیلد ۹' },
+            { key: 'list10', stateKey: 'list10', label: 'فیلد ۱۰' },
+        ];
+    }, []);
+
+    const fixedFields = [
+        { key: 'quantity_added', label: 'تعداد / مقدار', type: 'number' },
+        { key: 'storage_location', label: 'محل نگهداری', type: 'text' },
+        { key: 'unit_price', label: 'قیمت واحد', type: 'number' },
+        { key: 'vendor_name', label: 'نام فروشنده', type: 'text' },
+        { key: 'invoice_number', label: 'شماره فاکتور', type: 'text' },
+        { key: 'reason', label: 'دلیل / پروژه', type: 'textarea' },
+    ];
+
+    // جایگزین بخش dynamicFields شوید:
+    const dynamicFields = React.useMemo(() => {
+        if (!log || !config) return [];
+
+        // ۱. تلاش برای پیدا کردن تنظیمات (با پشتیبانی از اعداد و رشته‌ها)
+        // ممکن است type در لاگ عدد باشد ولی در کانفیگ رشته (یا برعکس)
+        let typeConfig = config[log.type] || config[String(log.type)];
+
+        // اگر پیدا نشد، شاید مشکل حروف کوچک/بزرگ باشد (مثلا Resistor vs resistor)
+        if (!typeConfig) {
+            const matchKey = Object.keys(config).find(k => k.toLowerCase() === String(log.type).toLowerCase());
+            if (matchKey) typeConfig = config[matchKey];
+        }
+
+        // اگر باز هم پیدا نشد، یعنی کانفیگ این قطعه کلاً موجود نیست
+        if (!typeConfig) return [];
+
+        return DYNAMIC_FIELDS_MAP.map(fieldMap => {
+            const key = fieldMap.key; // مثلا list10
+
+            // ۲. خواندن تنظیمات فیلد
+            // دقیقاً مشابه Entry Page عمل می‌کنیم
+            const fieldSetting = typeConfig.fields?.[key];
+            
+            // ۳. تعیین نام (Label)
+            let label = fieldSetting?.label;
+
+            // اگر لیبل نداشت ولی "مشخصه فنی" بود، از نام کلی استفاده کن
+            if (!label && key === 'paramOptions' && typeConfig.paramLabel) {
+                label = typeConfig.paramLabel;
+            }
+
+            // اگر باز هم نام نداشت، از نام پیش‌فرض (زاپاس) استفاده کن
+            if (!label) {
+                label = fieldMap.label;
+            }
+
+            // ۴. تعیین کلید دیتابیس و بررسی مقدار
+            let dbKey = fieldMap.stateKey;
+            // اصلاح نام‌های قدیمی
+            if (dbKey === 'tol' && log['tolerance'] !== undefined) dbKey = 'tolerance';
+            if (dbKey === 'pkg' && log['package'] !== undefined) dbKey = 'package';
+
+            // شرط نمایش: یا در تنظیمات روشن باشد، یا این لاگ قدیمی مقداری داشته باشد
+            const isVisible = fieldSetting?.visible === true;
+            const hasData = log[dbKey] !== undefined && log[dbKey] !== null && String(log[dbKey]).trim() !== "";
+
+            if (!isVisible && !hasData) return null;
+
+            return {
+                key: dbKey,
+                label: label, 
+                type: 'text'
+            };
+        }).filter(Boolean);
+    }, [log, config, DYNAMIC_FIELDS_MAP]);
 
     useEffect(() => {
         if (log) {
-            setQty(log.quantity_added);
-            setReason(log.reason || "");
-            setEditReason(log.edit_reason || ""); 
+            const initialData = { ...log };
+            [...fixedFields, ...dynamicFields].forEach(f => {
+                if (initialData[f.key] === undefined || initialData[f.key] === null) {
+                    initialData[f.key] = "";
+                }
+            });
+            setFormData(initialData);
+            setManualEditReason(""); 
         }
-    }, [log, isOpen]);
+    }, [log, isOpen, dynamicFields]);
 
     if (!isOpen || !log) return null;
 
+    const handleChange = (key, value) => {
+        setFormData(prev => ({ ...prev, [key]: value }));
+    };
+
     const handleConfirm = () => {
-        onSave({
-            log_id: log.log_id,
-            quantity_added: qty,
-            reason: reason,
-            edit_reason: editReason
+        const changes = [];
+        [...fixedFields, ...dynamicFields].forEach(field => {
+            const oldVal = log[field.key] ? String(log[field.key]).trim() : "";
+            const newVal = formData[field.key] ? String(formData[field.key]).trim() : "";
+
+            if (oldVal !== newVal) {
+                if (!oldVal && !newVal) return;
+                changes.push(`${field.label}: ${oldVal || '(خالی)'} -> ${newVal || '(خالی)'}`);
+            }
         });
+
+        let finalReason = manualEditReason.trim();
+        if (changes.length > 0) {
+            const autoLog = changes.join(" | ");
+            finalReason = finalReason ? `${finalReason} | ${autoLog}` : autoLog;
+        }
+
+        onSave({ ...log, ...formData, edit_reason: finalReason });
     };
 
     return (
         <ModalOverlay>
-            <div className="glass-panel border border-white/10 p-6 rounded-2xl max-w-sm w-full shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i data-lucide="pencil-line" className="text-nexus-accent w-5 h-5"></i>
-                    اصلاح تراکنش
-                </h3>
-                <div className="space-y-4">
-                    <div>
-                        <label className="text-xs text-gray-400 block mb-1">مقدار تغییر (تعداد)</label>
-                        <input type="number" className="nexus-input w-full px-3 py-2 text-sm font-mono ltr" value={qty} onChange={e => setQty(e.target.value)} />
+            <div className="glass-panel border border-white/10 p-6 rounded-2xl max-w-2xl w-full shadow-2xl animate-scale-in flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4 pb-4 border-b border-white/10">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <i data-lucide="file-edit" className="text-nexus-accent w-5 h-5"></i>
+                        ویرایش اطلاعات تراکنش
+                    </h3>
+                    <div className="text-xs text-gray-400 bg-white/5 px-2 py-1 rounded">
+                        {log.type} - {log.part_code || log.log_id}
                     </div>
-                    
-                    <div>
-                        <label className="text-xs text-gray-400 block mb-1">دلیل اصلی / پروژه</label>
-                        <textarea className="nexus-input w-full px-3 py-2 text-sm min-h-[50px] resize-none" value={reason} onChange={e => setReason(e.target.value)} placeholder="مثلاً: استفاده در پروژه X" />
+                </div>
+
+                <div className="overflow-y-auto custom-scroll pr-2 flex-1">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        {fixedFields.map(field => (
+                            <div key={field.key} className={field.type === 'textarea' ? "md:col-span-2" : ""}>
+                                <label className="text-xs text-gray-400 block mb-1">{field.label}</label>
+                                {field.type === 'textarea' ? (
+                                    <textarea className="nexus-input w-full px-3 py-2 text-sm min-h-[60px] resize-none" value={formData[field.key]} onChange={e => handleChange(field.key, e.target.value)} />
+                                ) : (
+                                    <input type={field.type} className="nexus-input w-full px-3 py-2 text-sm font-mono" dir="ltr" value={formData[field.key]} onChange={e => handleChange(field.key, e.target.value)} />
+                                )}
+                            </div>
+                        ))}
                     </div>
 
-                    <div className="pt-2 border-t border-white/10">
-                        <label className="text-xs text-yellow-500/80 block mb-1">دلیل ویرایش (چرا تغییر می‌دهید؟)</label>
+                    {dynamicFields.length > 0 && (
+                        <div className="mb-4 pt-4 border-t border-white/5">
+                            <h4 className="text-xs font-bold text-nexus-primary mb-3">مشخصات فنی ({log.type})</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {dynamicFields.map(field => (
+                                    <div key={field.key}>
+                                        <label className="text-[10px] text-gray-500 block mb-1">{field.label}</label>
+                                        <input className="nexus-input w-full px-2 py-1.5 text-xs bg-black/20" value={formData[field.key] || ''} onChange={e => handleChange(field.key, e.target.value)} />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="pt-4 border-t border-white/10 bg-yellow-500/5 -mx-2 px-4 py-3 rounded-xl mt-2">
+                        <label className="text-xs text-yellow-500/80 block mb-1 font-bold">توضیحات اصلاح (اختیاری)</label>
                         <input 
                             className="nexus-input w-full px-3 py-2 text-sm bg-yellow-500/5 border-yellow-500/20 focus:border-yellow-500/50 text-yellow-100 placeholder-yellow-500/30"
-                            value={editReason}
-                            onChange={e => setEditReason(e.target.value)}
-                            placeholder="مثلاً: اشتباه تایپی..."
+                            value={manualEditReason}
+                            onChange={e => setManualEditReason(e.target.value)}
+                            placeholder="توضیح دستی..."
                         />
                     </div>
+                </div>
 
-                    <div className="flex gap-2 pt-2">
-                        <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-sm font-bold transition">انصراف</button>
-                        <button onClick={handleConfirm} className="flex-1 py-2 rounded-xl bg-nexus-primary hover:bg-indigo-600 text-white text-sm font-bold transition shadow-lg">ذخیره و اصلاح</button>
-                    </div>
+                <div className="flex gap-3 pt-4 border-t border-white/10 mt-2">
+                    <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-sm font-bold transition">انصراف</button>
+                    <button onClick={handleConfirm} className="flex-1 py-2.5 rounded-xl bg-nexus-primary hover:bg-indigo-600 text-white text-sm font-bold transition shadow-lg flex justify-center items-center gap-2">
+                        <i data-lucide="save" className="w-4 h-4"></i>
+                        ذخیره تغییرات
+                    </button>
                 </div>
             </div>
         </ModalOverlay>
@@ -196,6 +329,7 @@ const LogPage = () => {
             <EditLogModal 
                 isOpen={editModal.open} 
                 log={editModal.log} 
+                config={config}   // <--- این خط حتماً باید باشد تا نام فیلدها درست خوانده شود
                 onClose={() => setEditModal({ open: false, log: null })} 
                 onSave={handleUpdateLog}
             />
@@ -327,7 +461,22 @@ const LogPage = () => {
 
                                         <div className="mt-3 flex justify-between items-center border-t border-white/5 pt-3">
                                             <div className="flex items-center gap-4 text-xs text-gray-400">{l.vendor_name && <span className="flex items-center gap-1"><i data-lucide="store" className="w-3 h-3 text-blue-400"></i> {l.vendor_name}</span>}{l.unit_price > 0 && <span className="flex items-center gap-1 font-mono text-amber-400"><i data-lucide="tag" className="w-3 h-3"></i> {formatMoney(l.unit_price)} T</span>}</div>
-                                            {isEdit ? (<div className="flex items-center gap-2"><span className="text-[10px] text-gray-500">تغییر موجودی:</span>{l.quantity_added !== 0 ? (<div className="px-3 py-1 rounded border bg-yellow-500/10 border-yellow-500/50 text-yellow-400 font-bold font-mono shadow-[0_0_10px_rgba(234,179,8,0.2)]">{l.quantity_added > 0 ? `+${l.quantity_added}` : l.quantity_added}</div>) : (<span className="text-xs text-yellow-500/80 font-bold">بروزرسانی اطلاعات</span>)}</div>) : (<div className={`text-lg font-black font-mono flex items-center gap-2 ${isEntry ? 'text-emerald-400' : (isDelete ? 'text-gray-500' : 'text-rose-400')}`}>{l.quantity_added > 0 ? '+' : ''}{l.quantity_added} <span className="text-xs font-normal text-gray-500">عدد</span></div>)}
+                                            {isEdit ? (
+                                                <div className="flex items-center gap-2">
+                                                    {l.quantity_added !== 0 ? (
+                                                        <div className="px-3 py-1 rounded border bg-yellow-500/10 border-yellow-500/50 text-yellow-400 font-bold font-mono shadow-[0_0_10px_rgba(234,179,8,0.2)]" dir="ltr">
+                                                            {l.quantity_added > 0 ? `+${l.quantity_added}` : l.quantity_added}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-yellow-500/80 font-bold">بروزرسانی اطلاعات</span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className={`text-lg font-black font-mono flex items-center gap-2 ${isEntry ? 'text-emerald-400' : (isDelete ? 'text-gray-500' : 'text-rose-400')}`}>
+                                                    <span dir="auto">{l.quantity_added > 0 ? '+' : ''}{l.quantity_added}</span>
+                                                    <span className="text-xs font-normal text-gray-500">عدد</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
